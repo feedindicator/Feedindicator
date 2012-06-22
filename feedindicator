@@ -1,0 +1,949 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+#		feedindicator
+#       Copyright (C) 2010-2011 Dave Gardner <eunbolt@gmail.com> & Michael Judge <email@clickopen.co.uk>
+#
+#		This program is free software: you can redistribute it and/or modify
+#		it under the terms of the GNU General Public License as published by
+#		the Free Software Foundation, either version 3 of the License, or
+#		(at your option) any later version.
+#
+#		This program is distributed in the hope that it will be useful,
+#		but WITHOUT ANY WARRANTY; without even the implied warranty of
+#		MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#		GNU General Public License for more details.
+#
+#		You should have received a copy of the GNU General Public License
+#		along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# [SNIPPET_NAME: Parse an RSS feed]
+# [SNIPPET_CATEGORIES: feedparser]  
+# [SNIPPET_DESCRIPTION: Parse and iterate over the items in an RSS feed]
+# [SNIPPET_AUTHOR: Tim Voet <tim.voet@gmail.com>]
+# [SNIPPET_DOCS: http://www.feedparser.org/docs/introduction.html]
+# [SNIPPET_LICENSE: GPL]
+
+# need python-feedparser and app-indicator(should come with ubuntu 10.04 and above)
+
+import pygtk
+pygtk.require('2.0')
+import glib
+import gtk
+import appindicator
+import feedparser
+import gc
+import hashlib
+import os
+import pynotify
+import string
+import sys
+import urllib
+import webbrowser
+import gconf
+import time
+from time import sleep
+from gconf import VALUE_BOOL, VALUE_INT, VALUE_STRING, VALUE_FLOAT
+from types import BooleanType, StringType, IntType, FloatType
+
+# clear out the html element list so all are removed
+feedparser._HTMLSanitizer.acceptable_elements = []
+
+# common name used for file paths, gconf and indicator identifier
+app_identifier = 'feedindicator'
+
+# indicator icon names
+app_indicator_icon = 'indicator-feedindicator'
+app_indicator_icon_attention = 'indicator-feedindicator-attention'
+
+# XDG config
+xdg_config_dir = glib.get_user_config_dir()
+app_config_dir = os.path.join(xdg_config_dir, app_identifier)
+app_config_file = os.path.join(app_config_dir, 'feeds.cfg')
+
+# XDG cache
+xdg_cache_dir = glib.get_user_cache_dir()
+app_cache_dir = os.path.join(xdg_cache_dir, app_identifier)
+app_cache_file = os.path.join(app_cache_dir, 'feeds.dat')
+
+# /usr/share/
+app_share_dir = '/usr/share/'+app_identifier+'/'
+app_icon = os.path.join(app_share_dir, 'feedindicator-icon.png')
+app_logo = os.path.join(app_share_dir, 'feedindicator-logo.png')
+
+# autostart file
+app_autostart_folder = os.path.join(xdg_config_dir, 'autostart')
+app_autostart_file = os.path.join(app_autostart_folder, app_identifier+'.desktop')
+
+# general app info mostly used in about dialog
+app_name = 'Feedindicator'
+app_version = '1.03'
+app_comments = 'RSS feed updates in the indicator area'
+app_copyright = 'Copyright (C) 2010-2011 Dave Gardner & Michael Judge'
+app_website = 'http://code.google.com/p/feedindicator/'
+app_license = (('This program is free software: you can redistribute it and/or modify\n'+
+'it under the terms of the GNU General Public License as published by\n'+
+'the Free Software Foundation, either version 3 of the License, or\n'+
+'(at your option) any later version.\n'+
+'\n'+
+'This program is distributed in the hope that it will be useful,\n'+
+'but WITHOUT ANY WARRANTY; without even the implied warranty of\n'+
+'MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n'+
+'GNU General Public License for more details.\n'+
+'\n'+
+'You should have received a copy of the GNU General Public License\n'+
+'along with this program.  If not, see <http://www.gnu.org/licenses/>.'))
+app_authors = ['Dave Gardner <eunbolt@gmail.com>','Michael Judge <email@clickopen.co.uk>']
+app_documenters = ['Dave Gardner <eunbolt@gmail.com>','Michael Judge <email@clickopen.co.uk>']
+
+# default autostart status
+autostart = False
+
+# default feed refresh time (minutes*seconds)
+refreshtime = 30*60
+
+# default stop the timer from running?
+stoptimer = False
+
+# default menu items to show per feed
+itemsperfeed = 5
+
+# default put feed items in submenus
+usesubmenus = False
+
+# default show notification popups
+shownotifications = True
+
+
+class Exit:
+
+	def __init__(self, widget):
+		sys.exit()
+
+
+class GConf:
+
+	def __init__ (self, appname, allowed={}):
+		self._domain = '/apps/%s/' % appname
+		self._allowed = allowed
+		self._gconf_client = gconf.client_get_default ()
+
+	def __getitem__ (self, attr):
+		return self.get_value (attr)
+
+	def __setitem__ (self, key, val):
+		allowed = self._allowed
+		if allowed.has_key(key):
+			if not key in allowed[key]:
+				good = ', '.join (allowed[key])
+				return False
+		self.set_value (key, val)
+
+	def _get_type (self, key):
+		KeyType = type (key)
+		if KeyType == BooleanType:
+			return 'bool'
+		elif KeyType == StringType:
+			return 'string'
+		elif KeyType == IntType:
+			return 'int'
+		elif KeyType == FloatType:
+			return 'float'
+		else:
+			return None
+
+    # Public functions
+
+	def set_allowed (self, allowed):
+		self._allowed = allowed
+
+	def set_domain (self, domain):
+		self._domain = domain
+
+	def get_domain (self):
+		return self._domain
+
+	def get_gconf_client (self):
+		return self._gconf_client
+
+	def get_value (self, key):
+		"""returns the value of key 'key' """
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		value = self._gconf_client.get(self._domain + key)
+		if value is not None:
+			ValueType = value.type
+			if ValueType == VALUE_BOOL:
+				return value.get_bool()
+			elif ValueType == VALUE_INT:
+				return value.get_int()
+			elif ValueType == VALUE_STRING:
+				return value.get_string()
+			elif ValueType == VALUE_FLOAT:
+				return value.get_float()
+			else:
+				return None
+		else:
+			return None
+
+	def set_value (self, key, value):
+		"""sets the value of key 'key' to 'value' """
+		value_type = self._get_type(value)
+		if value_type is not None:
+			if '/' in key:
+				raise 'GConfError', 'key must not contain /'
+			func = getattr (self._gconf_client, 'set_' + value_type)
+			apply(func, (self._domain + key, value))
+
+	def get_string (self, key):
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		return self._gconf_client.get_string(self._domain + key)
+
+	def set_string (self, key, value):
+		if type (value) != StringType:
+			raise 'GConfError', 'value must be a string'
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		self._gconf_client.set_string(self._domain + key, value)
+
+	def get_bool (self, key):
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		return self._gconf_client.get_bool(self._domain + key)
+
+	def set_bool (self, key, value):
+		if type (value) != IntType and (key != 0 or key != 1):
+			raise 'GConfError', 'value must be a boolean'
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		self._gconf_client.set_bool(self._domain + key, value)
+
+	def get_int (self, key):
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		return self._gconf_client.get_int(self._domain + key)
+
+	def set_int (self, key, value):
+		if type (value) != IntType:
+			raise 'GConfError', 'value must be an int'
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		self._gconf_client.set_int(self._domain + key, value)
+
+	def get_float (self, key):
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		return self._gconf_client.get_float(self._domain + key)
+
+	def set_float (self, key, value):
+		if type (value) != FloatType:
+			raise 'GConfError', 'value must be a float'
+		if '/' in key:
+			raise 'GConfError', 'key must not contain /'
+		self._gconf_client.set_float(self._domain + key, value)
+
+
+class AboutDialog:
+
+	def __init__(self, widget):
+
+		about = gtk.AboutDialog()
+		about.set_logo(gtk.gdk.pixbuf_new_from_file(app_logo))
+		about.set_name(app_name)
+		about.set_program_name(app_name)
+		about.set_version(app_version)
+		about.set_comments(app_comments)
+		about.set_copyright(app_copyright)
+		about.set_license(app_license)
+		about.set_website(app_website)
+		about.set_website_label(app_website)
+		about.set_authors(app_authors)
+		about.set_documenters(app_documenters)
+		about.run()
+		about.destroy()
+
+
+class ConfigureDialog:
+
+	def __init__(self, widget):
+
+		self.refreshtimeset = refreshtime
+		self.itemsperfeedset = itemsperfeed
+		self.autostartset = autostart
+		self.shownotificationsset = shownotifications
+		self.usesubmenusset = usesubmenus
+
+		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+		self.window.set_size_request(450, 450)
+		self.window.set_position(gtk.WIN_POS_CENTER)
+		self.window.set_title('Configure ' + app_name)
+		self.window.connect('delete_event',self.cancel_dialog)
+		self.window.connect('key-press-event', self.keypress)
+
+		vbox = gtk.VBox(False, 10)
+		vbox.set_border_width(10)
+		self.window.add(vbox)
+		vbox.show()
+
+		hboxl = gtk.HBox(False, 0)
+		vbox.pack_start(hboxl, False, True, 0)
+		hboxl.show()
+
+		label = gtk.Label('Configure feed urls to show in the menu.\nDrag-and-drop entries in the list below to sort.')
+		label.set_justify(gtk.JUSTIFY_LEFT)
+		label.set_line_wrap(True)
+		hboxl.pack_start(label, False, True, 0)
+		label.show()
+
+		scrolled_window = gtk.ScrolledWindow()
+		scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_ALWAYS)
+		scrolled_window.set_shadow_type(gtk.SHADOW_IN)
+		vbox.pack_start(scrolled_window, True, True, 0)
+		scrolled_window.show()
+
+		liststore = gtk.ListStore(str)
+
+		rssf = open(app_config_file)
+		for line in rssf:
+			line = string.replace(line, '\n', '')
+			liststore.append([line])
+		rssf.close()
+
+		self.treeview = gtk.TreeView(liststore)
+		self.column = gtk.TreeViewColumn('URL')
+		self.treeview.append_column(self.column)
+		textrenderer = gtk.CellRendererText()
+		self.column.pack_start(textrenderer, True)
+		self.column.add_attribute(textrenderer, 'text', 0)
+		textrenderer.set_property('editable', True)
+		textrenderer.connect('edited', self.cell_edited, liststore)
+		self.treeview.set_headers_clickable(False)
+		self.treeview.set_reorderable(True)
+		self.treeview.connect('cursor-changed', self.selection_made)
+		scrolled_window.add(self.treeview)
+		self.treeview.show()
+
+		hbox1 = gtk.HBox(True, 0)
+		vbox.pack_start(hbox1, False, True, 0)
+		hbox1.show()
+
+		self.button_change = gtk.Button('Add New')
+		hbox1.pack_start(self.button_change, True, True, 0)
+		self.button_change.connect_object('clicked', self.button_add_clicked, liststore)
+		self.button_change.show()
+		self.button_remove = gtk.Button('Remove')
+		hbox1.pack_start(self.button_remove, True, True, 0)
+		self.button_remove.connect_object('clicked', self.button_remove_clicked, liststore)
+		self.button_remove.set_sensitive(False)
+		self.button_remove.show()
+
+		hbox2sl = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2sl, False, True, 0)
+		hbox2sl.show()
+
+		self.scaletimerlabel = gtk.Label('Update feeds every...')
+		hbox2sl.pack_start(self.scaletimerlabel, False, False, 0)
+		self.scaletimerlabel.show()
+
+		hbox2s = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2s, False, True, 0)
+		hbox2s.show()
+
+		adjtimer = gtk.Adjustment(int(self.refreshtimeset/60), 1.0, 90.0, 1.0, 10.0, 0.0)
+		adjtimer.connect('value_changed', self.timer_scale)
+		scaletimer = gtk.HScale(adjtimer)
+		scaletimer.set_draw_value(False)
+		scaletimer.set_digits(0)
+		hbox2s.pack_start(scaletimer, True, True, 0)
+		self.timer_scale(adjtimer)
+		scaletimer.show()
+
+		hbox2il = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2il, False, True, 0)
+		hbox2il.show()
+
+		self.scaleitemslabel = gtk.Label('Items per feed...')
+		hbox2il.pack_start(self.scaleitemslabel, False, False, 0)
+		self.scaleitemslabel.show()
+
+		hbox2i = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2i, False, True, 0)
+		hbox2i.show()
+
+		adjitems = gtk.Adjustment(int(self.itemsperfeedset), 1.0, 30.0, 1.0, 10.0, 0.0)
+		adjitems.connect('value_changed', self.items_scale)
+		scaleitems = gtk.HScale(adjitems)
+		scaleitems.set_draw_value(False)
+		scaleitems.set_digits(0)
+		hbox2i.pack_start(scaleitems, True, True, 0)
+		self.items_scale(adjitems)
+		scaleitems.show()
+
+		hbox2t = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2t, False, True, 0)
+		hbox2t.show()
+
+		check_autostart = gtk.CheckButton('Run at startup')
+		hbox2t.pack_start(check_autostart, True, True, 0)
+		if autostart == True:
+			check_autostart.set_active(True)
+		check_autostart.connect('toggled', self.autostart_toggle)
+		check_autostart.show()
+
+		check_shownotifications = gtk.CheckButton('Show notifications')
+		hbox2t.pack_start(check_shownotifications, True, True, 0)
+		if shownotifications == True:
+			check_shownotifications.set_active(True)
+		check_shownotifications.connect('toggled', self.shownotifications_toggle)
+		check_shownotifications.show()
+
+		check_usesubmenus = gtk.CheckButton('Submenu for each feed')
+		hbox2t.pack_start(check_usesubmenus, True, True, 0)
+		if usesubmenus == True:
+			check_usesubmenus.set_active(True)
+		check_usesubmenus.connect('toggled', self.usesubmenus_toggle)
+		check_usesubmenus.show()
+
+		hbox3 = gtk.HBox(True, 0)
+		vbox.pack_end(hbox3, False, True, 5)
+		hbox3.show()
+
+		button_about = gtk.Button('About')
+		hbox3.pack_start(button_about, True, True, 0)
+		button_about.connect_object('clicked', AboutDialog, button_about)
+		button_about.show()
+		button_cancel = gtk.Button('Cancel')
+		hbox3.pack_start(button_cancel, True, True, 0)
+		button_cancel.connect_object('clicked', self.cancel_dialog, button_cancel)
+		button_cancel.show()
+		button_save = gtk.Button('Save')
+		hbox3.pack_start(button_save, True, True, 0)
+		button_save.connect_object('clicked', self.save_dialog, liststore)
+		button_save.show()
+
+		self.window.set_keep_above(True)
+		self.window.show()
+
+	def selection_made(self, data=None):
+		"""entry clicked so we enable the remove button"""
+		treesel = self.treeview.get_selection()
+		sel = treesel.get_selected()
+		if sel[1] != None:
+			self.button_remove.set_sensitive(True)
+
+	def cell_edited(self, cell, row, new_text, data):
+		"""update entry with edited value"""
+		data[row][0] = new_text
+		return
+
+	def button_add_clicked(self, data):
+		"""add entry to list and focus cursor"""
+		sel = data.append([''])
+		pos = data.get_path(sel)
+		self.treeview.set_cursor(pos,self.column,True)
+
+	def button_remove_clicked(self, data):
+		"""remove selected entry from list"""
+		treesel = self.treeview.get_selection()
+		sel = treesel.get_selected()
+		data.remove(sel[1])
+		self.button_remove.set_sensitive(False)
+
+	def timer_scale(self, widget):
+		"""refreshtimer slider interaction"""
+		value = widget.get_value();
+		if int(value) == 1:
+			self.refreshtimeset = int(value)*60
+			self.scaletimerlabel.set_text('Update feeds every minute')
+		else:
+			self.refreshtimeset = int(value)*60
+			self.scaletimerlabel.set_text('Update feeds every ' + str(self.refreshtimeset/60) + ' minutes')
+
+	def items_scale(self, widget):
+		"""scaleitems slider interaction"""
+		value = widget.get_value();
+		if int(value) == 1:
+			self.itemsperfeedset = int(value)
+			self.scaleitemslabel.set_text('Menu shows 1 item per feed')
+		else:
+			self.itemsperfeedset = int(value)
+			self.scaleitemslabel.set_text('Menu shows ' + str(self.itemsperfeedset) + ' items per feed')
+
+	def autostart_toggle(self, widget):
+		"""check toggle status"""
+		if widget.get_active():
+			self.autostartset = True
+		else:
+			self.autostartset = False
+
+	def shownotifications_toggle(self, widget):
+		"""check toggle status"""
+		if widget.get_active():
+			self.shownotificationsset = True
+		else:
+			self.shownotificationsset = False
+
+	def usesubmenus_toggle(self, widget):
+		"""check toggle status"""
+		if widget.get_active():
+			self.usesubmenusset = True
+		else:
+			self.usesubmenusset = False
+
+	def autostart_create(self):
+		"""create autostart file"""
+		global autostart
+	 	content = "\n"+"[Desktop Entry]\n"+"Type=Application\n"+"Exec="+app_identifier+" --autostarted\n"+"X-GNOME-Autostart-enabled=true\n"+"Icon="+app_identifier+"\n"+"Name="+app_name+"\n"+"Comment="+app_comments
+		if not os.path.exists(app_autostart_folder):
+			os.makedirs(app_autostart_folder, 0700)
+	 	f = open(app_autostart_file, 'w')
+	 	f.write(content)
+	 	f.close()
+		autostart = True
+
+ 	def autostart_delete(self):
+		"""remove autostart file"""
+		global autostart
+		if os.path.exists(app_autostart_file):
+			os.remove(app_autostart_file)
+		autostart = False
+
+	def keypress(self, widget, data):
+		"""keypress handler"""
+		if data.keyval == gtk.keysyms.Escape:
+			self.window.destroy()
+
+	def cancel_dialog(self, widget, data=None):
+		"""cancel dialog"""
+		self.window.destroy()
+
+	def save_dialog(self, data):
+		"""save list to config file and close config dialog"""
+		global refreshtime
+		global itemsperfeed
+		global autostart
+		global shownotifications
+		global usesubmenus
+		refreshtime = self.refreshtimeset
+		gconf['refreshtime'] = self.refreshtimeset
+		itemsperfeed = self.itemsperfeedset
+		gconf['itemsperfeed'] = self.itemsperfeedset
+		shownotifications = self.shownotificationsset
+		gconf['shownotifications'] = self.shownotificationsset
+		usesubmenus = self.usesubmenusset
+		gconf['usesubmenus'] = self.usesubmenusset
+		autostart = self.autostartset
+		if autostart == True:
+			self.autostart_create()
+		else:
+			self.autostart_delete()
+		#todo - remove feed icons of deleted/changed urls
+		ret = []
+		for row in data:
+			ret.append(row[0])
+		f = open(app_config_file, 'w')
+		for path in ret:
+			f.write(str(path)+'\n')
+		f.close()
+		self.window.destroy()
+		indicator.parse_feedlist(None,True,True)
+
+
+class AppIndicator:
+
+	def __init__(self):
+
+		global refreshtime
+		global stoptimer
+		global itemsperfeed
+		global autostart
+		global shownotifications
+		global usesubmenus
+
+		if gconf['refreshtime'] is not None:
+			refreshtime = gconf['refreshtime'];
+		else:
+			gconf['refreshtime'] = refreshtime;
+
+		if gconf['itemsperfeed'] is not None:
+			itemsperfeed = gconf['itemsperfeed'];
+		else:
+			gconf['itemsperfeed'] = itemsperfeed;
+
+		if gconf['stoptimer'] is not None:
+			stoptimer = gconf['stoptimer'];
+		else:
+			gconf['stoptimer'] = stoptimer;
+
+		if gconf['shownotifications'] is not None:
+			shownotifications = gconf['shownotifications'];
+		else:
+			gconf['shownotifications'] = shownotifications;
+
+		if gconf['usesubmenus'] is not None:
+			usesubmenus = gconf['usesubmenus'];
+		else:
+			gconf['usesubmenus'] = usesubmenus;
+
+		if os.path.exists(app_autostart_file):
+			autostart = True
+
+		self.feedlist = []
+		self.feeds = []
+		self.cacheread = []
+		self.cachenotified = []
+
+		if os.path.isdir(app_config_dir) == False:
+			os.mkdir(app_config_dir,0700)
+
+		if os.path.isdir(app_cache_dir) == False:
+			os.mkdir(app_cache_dir,0700)
+
+		if os.path.isfile(app_config_file) == False:
+			ff = open(app_config_file, 'w')
+			ff.close()
+
+		if os.path.isfile(app_cache_file) == False:
+			ff = open(app_cache_file, 'w')
+			ff.close()
+
+		self.ind = appindicator.Indicator(app_name, app_identifier, appindicator.CATEGORY_APPLICATION_STATUS)
+		self.ind.set_status(appindicator.STATUS_ACTIVE) #STATUS_PASSIVE = hidden, STATUS_ACTIVE = visible, STATUS_ATTENTION = want the users attention
+		self.ind.set_attention_icon(app_indicator_icon_attention)
+		self.ind.set_icon(app_indicator_icon)
+
+		self.menu = gtk.Menu()
+
+		self.updates_start(None, True)
+
+	def send_notification(self, title, message, image):
+		"""send feed updates to notify-osd"""
+		pynotify.init(title)
+		if image == None:
+			image = 'file://' + app_icon
+		n = pynotify.Notification(title, message, image)
+		n.set_hint_string('x-canonical-append','')
+		n.show()
+
+	def set_status(self,status):
+		"""turns the appindicator to attention and back to normal"""
+		if status == 'true':
+			self.ind.set_status(appindicator.STATUS_ATTENTION)
+		else:
+			self.ind.set_status(appindicator.STATUS_ACTIVE)
+
+	def file_cache_read(self):
+		"""get the cacheread values from file"""
+		del self.cacheread[:]
+		del self.cachenotified[:]
+		with open(app_cache_file, 'r') as fr:
+			eachline = fr.readlines()
+			for line in eachline:
+				line = string.replace(line, '\n', '')
+				self.cacheread.append(line)
+				self.cachenotified.append(line)
+
+	def file_cache_write(self):
+		"""write the cacheread values to file"""
+		with open(app_cache_file, 'w') as fw:
+			write = '\n'.join(self.cacheread)
+			fw.write(unicode(write))
+
+	def menuitem_allread(self, data):
+		"""adds all items to read and notify caches"""
+		del self.cacheread[:]
+		del self.cachenotified[:]
+		for feednum,feedinfo in enumerate(self.feeds):
+			for val in feedinfo['postdata']:
+				mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
+				self.cacheread.append(mdhash)
+				self.cachenotified.append(mdhash)
+				feedinfo['readcount'] += 1
+			self.feeds[feednum] = feedinfo
+		self.render_menu(self)
+
+	def menuitem_allunread(self, data):
+		"""empties read and notify caches"""
+		del self.cacheread[:]
+		del self.cachenotified[:]
+		self.render_menu(self)
+
+	def menuitem_response_website(self, data, url):
+		"""open the feed's website url"""
+		webbrowser.open(url)
+
+	def menuitem_response(self, data, title, url):
+		"""open the website page url"""
+		webbrowser.open(url)
+		mdhash = hashlib.md5(str(title) + str(url)).hexdigest()
+		self.cacheread.append(mdhash);
+		self.render_menu(self)
+
+	def create_menu_header(self, title, url):
+		"""create the menu heading for each feed"""
+		menu_row = gtk.MenuItem(title)
+		if url != '':
+			menu_row.connect('activate', self.menuitem_response_website, url)
+		return menu_row
+
+	def create_menu_item(self, title, url):
+		"""create the menu entries for each feed"""
+		mdhash = hashlib.md5(str(title) + str(url)).hexdigest()
+		if mdhash not in self.cacheread:
+			if usesubmenus == True:
+				menu_row = gtk.MenuItem(title)
+			else:
+				menu_row = gtk.MenuItem("        " + title)
+			menu_row.connect('activate', self.menuitem_response, title, url)
+			return menu_row
+
+	def compare_feed_with_cache(self, rssfeed, feednum):
+		"""compare the rss feed with our stored copy"""
+		readsize = 0
+		hashlist = {}
+		posttitlelist = {}
+		postlinklist = {}
+		notifyhashlist = {}
+		feedmenu = []
+		feedinfo = self.feeds[feednum]
+		i = 0
+		for val in rssfeed:
+			hashed = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
+			hashlist[i] = hashed
+			posttitlelist[i] = val['title']
+			postlinklist[i] = val['link']
+			notifyhashlist[i] = hashed
+			i += 1
+		postsize = len(hashlist)
+		feedinfo['itemcount'] = postsize
+		for i, mdhash in hashlist.items():
+			if mdhash in self.cachenotified:
+				del notifyhashlist[i]
+			if mdhash in self.cacheread:
+				del posttitlelist[i]
+				del postlinklist[i]
+				if i in notifyhashlist:
+					del notifyhashlist[i]
+				readsize = readsize + 1
+		feedinfo['readcount'] = readsize
+		if len(notifyhashlist) > 0:
+			if shownotifications == True:
+				notifytitle = feedinfo['feeddata']['title']
+				count = 0
+				notifymsg = ''
+				notifylist = []
+				for i in sorted(notifyhashlist.iterkeys()):
+					notifylist.append(posttitlelist[i])
+					count += 1
+					if count > 3:
+						break
+				notifymsg = "\n".join(notifylist)
+				try:
+					self.send_notification(str(notifytitle),str(notifymsg),feedinfo['feeddata']['img'])
+				except:
+					pass
+			self.cachenotified.extend(notifyhashlist.values())
+		if len(posttitlelist) > 0:
+			for i in sorted(posttitlelist.iterkeys()):
+				name = posttitlelist[i]
+				link = postlinklist[i]
+				vals = name, link
+				feedmenu.append(vals)
+		self.feeds[feednum] = feedinfo
+		return feedmenu
+
+	def parse_feedlist(self,data,fetchlist,timeroverride=False):
+		"""parse through the rss feed in the array or fetch from the url"""
+		global stoptimer
+		if stoptimer == True and timeroverride == False:
+			return False
+		else:
+			del self.feeds[:]
+			feednumber = 0
+			if fetchlist == True:
+				del self.feedlist[:]
+				try:
+					rssf = open(app_config_file)
+					for line in rssf:
+						line = string.replace(line, '\n', '')
+						self.feedlist.append(line)
+					rssf.close()
+				except:
+					pass
+			if len(self.feedlist) > 0:
+				for url in self.feedlist:
+					feedinfo = {}
+					feedinfo['feeddata'] = {}
+					feedinfo['postdata'] = []
+					feedinfo['itemcount'] = 0
+					feedinfo['readcount'] = 0
+					feedinfo['success'] = False
+					try:
+						rssfeed = feedparser.parse(url)
+						postdata = []
+						for val in rssfeed.entries:
+							val.title = string.replace(val.title, '\n', '')
+							if len(val.title) > 72:
+								substr = val.title[:72]
+								substr = substr.rpartition(' ')
+								if substr[0] != '':
+									val.title = substr[0] + '...'
+							v = {'title': val.title, 'link': val.link}
+							postdata.append(v)
+						feedinfo['postdata'] = postdata
+						feedimg = None
+						webimg = None
+						if 'image' in rssfeed.feed:
+							webimg = rssfeed.feed.image.href
+						elif 'logo' in rssfeed.feed:
+							webimg = rssfeed.feed.logo
+						elif 'icon' in rssfeed.feed:
+							webimg = rssfeed.feed.icon
+						if webimg != None:
+							ext = webimg.rsplit('.', 1)
+							md5hash = hashlib.md5(str(url)).hexdigest()
+							localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
+							urllib.urlretrieve(webimg, localimg)
+							feedimg = localimg
+						feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
+						feedinfo['success'] = True
+					except:
+						pass
+					self.feeds.append(feedinfo)
+					feednumber += 1
+				self.render_menu(self)
+				return True
+			else:
+				stoptimer = True
+				self.render_menu(self)
+				return False
+
+	def render_menu(self,data):
+		"""populate the menu"""
+		global stoptimer
+		unreadcount = 0
+		for child in self.menu.get_children():
+			child.destroy()
+		if len(self.feeds) > 0:
+			for index,feedinfo in enumerate(self.feeds):
+				if feedinfo['success'] == True:
+					feedmenu = self.compare_feed_with_cache(feedinfo['postdata'], index)
+					feedunreadcount = feedinfo['itemcount'] - feedinfo['readcount']
+					if usesubmenus == True:
+						menu_header = self.create_menu_header('(' + str(feedunreadcount) + ') ' + str(feedinfo['feeddata']['title']), '')
+						menu_row = self.create_menu_header('Open Website', feedinfo['feeddata']['link'])
+						submenu = gtk.Menu()
+						submenu.append(menu_row)
+						if len(feedmenu) > 0:
+							menu_spacer = gtk.SeparatorMenuItem()
+							submenu.append(menu_spacer)
+							feedmenu.reverse()
+							try:
+								x = feedmenu[-itemsperfeed:]
+								for i,v in enumerate(x):
+									menu_row = self.create_menu_item(v[0], v[1])
+									submenu.append(menu_row)
+							except IndexError:
+								pass
+						menu_header.set_submenu(submenu)
+						self.menu.append(menu_header)
+					else:
+						menu_header = self.create_menu_header('(' + str(feedunreadcount) + ') ' + str(feedinfo['feeddata']['title']), feedinfo['feeddata']['link'])
+						self.menu.append(menu_header)
+						try:
+							x = feedmenu[0:itemsperfeed]
+							for i,v in enumerate(x):
+								menu_row = self.create_menu_item(v[0], v[1])
+								self.menu.append(menu_row)
+						except IndexError:
+							pass
+					unreadcount += feedunreadcount
+				else:
+					menu_header = self.create_menu_header('Failed: ' + str(self.feedlist[index]), '')
+					self.menu.append(menu_header)
+					menu_header.set_sensitive(False)
+			menu_spacer = gtk.SeparatorMenuItem()
+			self.menu.append(menu_spacer)
+			menu_read = gtk.MenuItem('Mark all as read')
+			menu_read.connect('activate', self.menuitem_allread)
+			self.menu.append(menu_read)
+			menu_unread = gtk.MenuItem('Mark all as unread')
+			menu_unread.connect('activate', self.menuitem_allunread)
+			self.menu.append(menu_unread)
+			menu_update = gtk.MenuItem('Reload all feeds')
+			menu_update.connect('activate', self.parse_feedlist, True, True)
+			self.menu.append(menu_update)
+			menu_spacer = gtk.SeparatorMenuItem()
+			self.menu.append(menu_spacer)
+			if refreshtime/60 == 1:
+				menu_updatecheck = gtk.CheckMenuItem('Update feeds every minute')
+			else:
+				menu_updatecheck = gtk.CheckMenuItem('Update feeds every ' + str(refreshtime/60) + ' minutes')
+			if stoptimer == True:
+				menu_updatecheck.set_active(False)
+			else:
+				menu_updatecheck.set_active(True)
+			menu_updatecheck.connect('toggled', self.updates_toggle)
+			self.menu.append(menu_updatecheck)
+		else:
+			menu_notice = gtk.MenuItem('No feeds defined!')
+			self.menu.append(menu_notice)
+			menu_notice.set_sensitive(False)
+			menu_spacer = gtk.SeparatorMenuItem()
+			self.menu.append(menu_spacer)
+			menu_update = gtk.MenuItem('Reload all feeds')
+			menu_update.connect('activate', self.updates_start)
+			self.menu.append(menu_update)
+			menu_spacer = gtk.SeparatorMenuItem()
+			self.menu.append(menu_spacer)
+		menu_configure = gtk.MenuItem('Configure ' + app_name)
+		self.menu.append(menu_configure)
+		menu_configure.connect('activate', ConfigureDialog)
+		menu_quit = gtk.MenuItem('Quit')
+		self.menu.append(menu_quit)
+		menu_quit.connect('activate', Exit)
+		self.menu.show_all()
+		self.ind.set_menu(self.menu)
+		if (unreadcount > 0):
+			self.set_status('true')
+		else:
+			self.set_status('false')
+		self.file_cache_write()
+
+	def updates_toggle(self, data):
+		"""toggle updating"""
+		global stoptimer
+		if stoptimer == True:
+			stoptimer = False
+			gconf['stoptimer'] = False
+			self.send_notification(app_name + ' - Started','Feeds will update every ' + str(refreshtime/60) + ' minutes', None)
+			self.updates_start(self)
+		else:
+			stoptimer = True
+			gconf['stoptimer'] = True
+			self.send_notification(app_name + ' - Stopped','Feeds will not update automatically', None)
+
+	def updates_start(self,data=None,timeroverride=False):
+		"""start updating"""
+		self.file_cache_read()
+		self.parse_feedlist(None,True,timeroverride)
+		glib.timeout_add_seconds(refreshtime, self.parse_feedlist, None, False)
+
+
+def main():
+	gtk.main()
+	return 0
+
+if __name__ == "__main__":
+	'''delay to make sure config files are accessible on autostart'''
+	cmdline = sys.argv
+	if len(cmdline) > 1:
+		if cmdline[1] == '--autostarted':
+			time.sleep(5)
+	if gc.isenabled() == False:
+		gc.enable()
+	gconf = GConf(app_identifier)
+	indicator = AppIndicator()
+	main()
+
