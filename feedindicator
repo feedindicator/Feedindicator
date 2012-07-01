@@ -806,8 +806,15 @@ class AppIndicator:
 							localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
 							urllib.urlretrieve(webimg, localimg)
 							feedimg = localimg
-						feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
-						feedinfo['success'] = True
+						if "link" in rssfeed.feed:
+							feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
+							feedinfo['success'] = True
+						else:
+							for link in rssfeed.feed.links:
+								if link.rel == "alternate":
+									feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': link.href, 'img': feedimg}
+									feedinfo['success'] = True
+									break
 					except:
 						pass
 					self.feeds.append(feedinfo)
