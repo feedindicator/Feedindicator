@@ -591,8 +591,8 @@ class AppIndicator:
 
 		self.feedlist = []
 		self.feeds = []
-		self.cacheread = []
-		self.cachenotified = []
+		self.cacheread = set()
+		self.cachenotified = set()
 
 		if os.path.isdir(app_config_dir) == False:
 			os.mkdir(app_config_dir,0700)
@@ -635,14 +635,14 @@ class AppIndicator:
 
 	def file_cache_read(self):
 		"""get the cacheread values from file"""
-		del self.cacheread[:]
-		del self.cachenotified[:]
+		self.cacheread.clear()
+		self.cachenotified.clear()
 		with open(app_cache_file, 'r') as fr:
 			eachline = fr.readlines()
 			for line in eachline:
 				line = string.replace(line, '\n', '')
-				self.cacheread.append(line)
-				self.cachenotified.append(line)
+				self.cacheread.add(line)
+				self.cachenotified.add(line)
 
 	def file_cache_write(self):
 		"""write the cacheread values to file"""
@@ -652,21 +652,36 @@ class AppIndicator:
 
 	def menuitem_allread(self, data):
 		"""adds all items to read and notify caches"""
-		del self.cacheread[:]
-		del self.cachenotified[:]
 		for feednum,feedinfo in enumerate(self.feeds):
-			for val in feedinfo['postdata']:
-				mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
-				self.cacheread.append(mdhash)
-				self.cachenotified.append(mdhash)
-				feedinfo['readcount'] += 1
-			self.feeds[feednum] = feedinfo
+			self.feed_read(feednum, feedinfo)
 		self.render_menu(self)
+
+	def menuitem_read(self, data, feednum, feedinfo):
+		"""adds feed to read"""
+		self.feed_read(feednum, feedinfo)
+		self.render_menu(self)
+
+	def feed_read(self, feednum, feedinfo):
+		"""adds all items of a feed to read"""
+		for val in feedinfo['postdata']:
+			mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
+			self.cacheread.add(mdhash)
+			self.cachenotified.add(mdhash)
+			feedinfo['readcount'] += 1
+		self.feeds[feednum] = feedinfo
 
 	def menuitem_allunread(self, data):
 		"""empties read and notify caches"""
-		del self.cacheread[:]
-		del self.cachenotified[:]
+		self.cacheread.clear()
+		self.cachenotified.clear()
+		self.render_menu(self)
+
+	def menuitem_unread(self, data, feednum, feedinfo):
+		"""empties read for the specified feed and notify caches"""
+		for val in feedinfo['postdata']:
+			mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
+			self.cacheread.remove(mdhash)
+			self.cachenotified.remove(mdhash)
 		self.render_menu(self)
 
 	def menuitem_response_website(self, data, url):
@@ -743,7 +758,7 @@ class AppIndicator:
 					self.send_notification(str(notifytitle),str(notifymsg),feedinfo['feeddata']['img'])
 				except:
 					pass
-			self.cachenotified.extend(notifyhashlist.values())
+			self.cachenotified|=set(notifyhashlist.values())#.extend(notifyhashlist.values())
 		if len(posttitlelist) > 0:
 			for i in sorted(posttitlelist.iterkeys()):
 				name = posttitlelist[i]
@@ -806,15 +821,8 @@ class AppIndicator:
 							localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
 							urllib.urlretrieve(webimg, localimg)
 							feedimg = localimg
-						if "link" in rssfeed.feed:
-							feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
-							feedinfo['success'] = True
-						else:
-							for link in rssfeed.feed.links:
-								if link.rel == "alternate":
-									feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': link.href, 'img': feedimg}
-									feedinfo['success'] = True
-									break
+						feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
+						feedinfo['success'] = True
 					except:
 						pass
 					self.feeds.append(feedinfo)
@@ -842,6 +850,12 @@ class AppIndicator:
 						menu_row = self.create_menu_header('Open Website', feedinfo['feeddata']['link'])
 						submenu = gtk.Menu()
 						submenu.append(menu_row)
+						submenu_read = gtk.MenuItem('Mark as read')
+						submenu_read.connect('activate', self.menuitem_read, index, feedinfo)
+						submenu.append(submenu_read)
+						submenu_read = gtk.MenuItem('Mark as unread')
+						submenu_read.connect('activate', self.menuitem_unread, index, feedinfo)
+						submenu.append(submenu_read)
 						if len(feedmenu) > 0:
 							menu_spacer = gtk.SeparatorMenuItem()
 							submenu.append(menu_spacer)
