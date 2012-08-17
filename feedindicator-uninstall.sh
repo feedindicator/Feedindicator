@@ -39,6 +39,6 @@ then
 rm -r "$cachedir"
 fi
 
-MESSAGE="Feedindicator uninstall completed..."
+MESSAGE="Feedindicator uninstall completed."
 echo $MESSAGE
 

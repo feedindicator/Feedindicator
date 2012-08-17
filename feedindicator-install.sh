@@ -23,6 +23,6 @@ sudo cp feedindicator-logo.png /usr/share/feedindicator/feedindicator-logo.png
 sudo cp feedindicator /usr/bin/feedindicator
 sudo chmod +x /usr/bin/feedindicator
 
-MESSAGE="Feedindicator install completed..."
+MESSAGE="Feedindicator install completed."
 echo $MESSAGE
 
