@@ -692,7 +692,7 @@ class AppIndicator:
 		"""open the website page url"""
 		webbrowser.open(url)
 		mdhash = hashlib.md5(str(title) + str(url)).hexdigest()
-		self.cacheread.append(mdhash);
+		self.cacheread.add(mdhash);
 		self.render_menu(self)
 
 	def create_menu_header(self, title, url):
