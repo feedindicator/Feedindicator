@@ -1,0 +1,14 @@
+Package: feedindicator
+Version: 1.04-1
+Section: web
+Priority: optional
+Architecture: all
+Depends: python (>= 2.3), python-feedparser, python-appindicator, hicolor-icon-theme, indicator-application, xdg-utils
+Installed-Size: INSTALLED_SIZE
+Maintainer: Nicolas Raoul <nicolas.raoul@gmail.com>
+Homepage: http://code.google.com/p/feedindicator/
+Description: RSS feed updates in the indicator area
+ Editable, sortable list of feed URLs.
+ Notification popups of new feed items.
+ Adjustable update timer.
+
