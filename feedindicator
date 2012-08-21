@@ -275,7 +275,7 @@ class ConfigureDialog:
 		self.usesubmenusset = usesubmenus
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-		self.window.set_size_request(450, 450)
+		self.window.set_size_request(550, 450)
 		self.window.set_position(gtk.WIN_POS_CENTER)
 		self.window.set_title('Configure ' + app_name)
 		self.window.connect('delete_event',self.cancel_dialog)
@@ -550,6 +550,88 @@ class ConfigureDialog:
 		indicator.parse_feedlist(None,True,True)
 
 
+class AddFeedDialog:
+
+	def __init__(self, widget):
+
+		self.refreshtimeset = refreshtime
+		self.itemsperfeedset = itemsperfeed
+		self.autostartset = autostart
+		self.shownotificationsset = shownotifications
+		self.usesubmenusset = usesubmenus
+
+		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+		self.window.set_size_request(450, 120)
+		self.window.set_position(gtk.WIN_POS_CENTER)
+		self.window.set_title('Add feed ' + app_name)
+		self.window.connect('delete_event',self.cancel_dialog)
+		self.window.connect('key-press-event', self.keypress)
+
+		vbox = gtk.VBox(False, 10)
+		vbox.set_border_width(10)
+		self.window.add(vbox)
+		vbox.show()
+
+		hboxl = gtk.HBox(False, 0)
+		vbox.pack_start(hboxl, False, True, 0)
+		hboxl.show()
+
+		label = gtk.Label('Add a feed url to show in the menu.')
+		label.set_justify(gtk.JUSTIFY_LEFT)
+		label.set_line_wrap(True)
+		hboxl.pack_start(label, False, True, 0)
+		label.show()
+
+		hbox2 = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2, False, True, 0)
+		hbox2.show()
+
+		self._textbox = gtk.Entry()
+		hbox2.pack_start(self._textbox, True, True, 0)
+		self._textbox.connect("activate", self.save_dialog)
+		self._textbox.show()
+
+		hbox3 = gtk.HBox(True, 0)
+		vbox.pack_end(hbox3, False, True, 5)
+		hbox3.show()
+
+		button_cancel = gtk.Button('Cancel')
+		hbox3.pack_start(button_cancel, True, True, 0)
+		button_cancel.connect_object('clicked', self.cancel_dialog, button_cancel)
+		button_cancel.show()
+		button_save = gtk.Button('Add')
+		hbox3.pack_start(button_save, True, True, 0)
+		button_save.connect_object('clicked', self.save_dialog, None)
+		button_save.show()
+
+		self.window.set_keep_above(True)
+		self.window.show()
+
+	def cancel_dialog(self, widget, data=None):
+		"""cancel dialog"""
+		self.window.destroy()
+
+	def save_dialog(self, data):
+		"""save feed to config file and close add feed dialog"""
+		self.window.set_modal(True)
+		url = str(self._textbox.get_text())
+		f = open(app_config_file, 'a')
+		f.write(url+'\n')
+		f.close()
+		self.window.destroy()
+		indicator.feedlist.append(url)
+		indicator.parse_feed(url)
+		indicator.render_menu(indicator)
+
+	def keypress(self, widget, data):
+		"""keypress handler"""
+		if data.keyval == gtk.keysyms.Escape:
+			self.window.destroy()
+		elif data.keyval == gtk.keysyms.Return:
+			self.save_dialog(None)
+
+
+
 class AppIndicator:
 
 	def __init__(self):
@@ -692,7 +774,7 @@ class AppIndicator:
 		"""open the website page url"""
 		webbrowser.open(url)
 		mdhash = hashlib.md5(str(title) + str(url)).hexdigest()
-		self.cacheread.append(mdhash);
+		self.cacheread.add(mdhash);
 		self.render_menu(self)
 
 	def create_menu_header(self, title, url):
@@ -758,7 +840,7 @@ class AppIndicator:
 					self.send_notification(str(notifytitle),str(notifymsg),feedinfo['feeddata']['img'])
 				except:
 					pass
-			self.cachenotified|=set(notifyhashlist.values())#.extend(notifyhashlist.values())
+			self.cachenotified|=set(notifyhashlist.values())
 		if len(posttitlelist) > 0:
 			for i in sorted(posttitlelist.iterkeys()):
 				name = posttitlelist[i]
@@ -768,7 +850,47 @@ class AppIndicator:
 		self.feeds[feednum] = feedinfo
 		return feedmenu
 
-	def parse_feedlist(self,data,fetchlist,timeroverride=False):
+	def parse_feed(self, url):
+		feedinfo = {}
+		feedinfo['feeddata'] = {}
+		feedinfo['postdata'] = []
+		feedinfo['itemcount'] = 0
+		feedinfo['readcount'] = 0
+		feedinfo['success'] = False
+		try:
+			rssfeed = feedparser.parse(url)
+			postdata = []
+			for val in rssfeed.entries:
+				val.title = string.replace(val.title, '\n', '')
+				if len(val.title) > 72:
+					substr = val.title[:72]
+					substr = substr.rpartition(' ')
+					if substr[0] != '':
+						val.title = substr[0] + '...'
+				v = {'title': val.title, 'link': val.link}
+				postdata.append(v)
+			feedinfo['postdata'] = postdata
+			feedimg = None
+			webimg = None
+			if 'image' in rssfeed.feed:
+				webimg = rssfeed.feed.image.href
+			elif 'logo' in rssfeed.feed:
+				webimg = rssfeed.feed.logo
+			elif 'icon' in rssfeed.feed:
+				webimg = rssfeed.feed.icon
+			if webimg != None:
+				ext = webimg.rsplit('.', 1)
+				md5hash = hashlib.md5(str(url)).hexdigest()
+				localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
+				urllib.urlretrieve(webimg, localimg)
+				feedimg = localimg
+			feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
+			feedinfo['success'] = True
+		except:
+			pass
+		self.feeds.append(feedinfo)
+
+	def parse_feedlist(self, data, fetchlist, timeroverride=False):
 		"""parse through the rss feed in the array or fetch from the url"""
 		global stoptimer
 		if stoptimer == True and timeroverride == False:
@@ -788,44 +910,7 @@ class AppIndicator:
 					pass
 			if len(self.feedlist) > 0:
 				for url in self.feedlist:
-					feedinfo = {}
-					feedinfo['feeddata'] = {}
-					feedinfo['postdata'] = []
-					feedinfo['itemcount'] = 0
-					feedinfo['readcount'] = 0
-					feedinfo['success'] = False
-					try:
-						rssfeed = feedparser.parse(url)
-						postdata = []
-						for val in rssfeed.entries:
-							val.title = string.replace(val.title, '\n', '')
-							if len(val.title) > 72:
-								substr = val.title[:72]
-								substr = substr.rpartition(' ')
-								if substr[0] != '':
-									val.title = substr[0] + '...'
-							v = {'title': val.title, 'link': val.link}
-							postdata.append(v)
-						feedinfo['postdata'] = postdata
-						feedimg = None
-						webimg = None
-						if 'image' in rssfeed.feed:
-							webimg = rssfeed.feed.image.href
-						elif 'logo' in rssfeed.feed:
-							webimg = rssfeed.feed.logo
-						elif 'icon' in rssfeed.feed:
-							webimg = rssfeed.feed.icon
-						if webimg != None:
-							ext = webimg.rsplit('.', 1)
-							md5hash = hashlib.md5(str(url)).hexdigest()
-							localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
-							urllib.urlretrieve(webimg, localimg)
-							feedimg = localimg
-						feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
-						feedinfo['success'] = True
-					except:
-						pass
-					self.feeds.append(feedinfo)
+					self.parse_feed(url)
 					feednumber += 1
 				self.render_menu(self)
 				return True
@@ -918,6 +1003,9 @@ class AppIndicator:
 			self.menu.append(menu_update)
 			menu_spacer = gtk.SeparatorMenuItem()
 			self.menu.append(menu_spacer)
+		menu_add = gtk.MenuItem('Add feed')
+		self.menu.append(menu_add)
+		menu_add.connect('activate', AddFeedDialog)
 		menu_configure = gtk.MenuItem('Configure ' + app_name)
 		self.menu.append(menu_configure)
 		menu_configure.connect('activate', ConfigureDialog)
