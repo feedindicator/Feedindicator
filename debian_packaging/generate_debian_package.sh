@@ -6,6 +6,8 @@ cp -r skeleton package
 cd package
 
 # Copy program and icons
+mkdir usr/bin
+mkdir usr/share
 cp ../../feedindicator usr/bin/
 cp ../../*.desktop usr/share/feedindicator/
 cp ../../*.png usr/share/feedindicator/
