@@ -7,7 +7,7 @@ cd package
 
 # Copy program and icons
 mkdir usr/bin
-mkdir usr/share
+mkdir usr/share/feedindicator
 cp ../../feedindicator usr/bin/
 cp ../../*.desktop usr/share/feedindicator/
 cp ../../*.png usr/share/feedindicator/
