@@ -42,6 +42,9 @@ import urllib
 import webbrowser
 import gconf
 import time
+import gobject
+import sqlite3 as lite
+from threading import Thread
 from time import sleep
 from gconf import VALUE_BOOL, VALUE_INT, VALUE_STRING, VALUE_FLOAT
 from types import BooleanType, StringType, IntType, FloatType
@@ -70,6 +73,9 @@ app_cache_file = os.path.join(app_cache_dir, 'feeds.test.dat')
 app_share_dir = '/usr/share/'+app_identifier+'/'
 app_icon = os.path.join(app_share_dir, 'feedindicator-icon.png')
 app_logo = os.path.join(app_share_dir, 'feedindicator-logo.png')
+
+# database
+app_database = os.path.join(app_config_dir, 'feedindicator.db')
 
 # autostart file
 app_autostart_folder = os.path.join(xdg_config_dir, 'autostart')
@@ -115,14 +121,101 @@ usesubmenus = False
 shownotifications = True
 
 
-class Exit:
 
+##################################################
+###############       SQLite       ###############
+##################################################
+class SQLite:
+	def get_con():
+		return self._con
+
+	con = property(get_con)
+
+	def __init__(self):
+		self._con = None
+
+	def open(self, path):
+		"""opens a new connection"""
+		try:
+			self._con = lite.connect(path)
+		except lite.Error, e:
+			print e
+
+	def close(self):
+		"""closes the current connection"""
+		if self._con:
+			try:
+				self._con.close()
+			except lite.Error, e:
+				print e
+
+	def execute(self, query, data=()):
+		"""executes the given query and returns the results"""
+		if self._con:
+			try:
+				cur = self._con.cursor()
+				if data == ():
+					cur.execute(query)
+				else:
+					cur.execute(query, data)
+				rows = cur.fetchall()
+				return rows
+			except lite.Error, e:
+				print e
+
+		return None
+
+	def executemany(self, query, data):
+		"""executes the given query with executemany()"""
+		if self._con:
+			try:
+				cur = self._con.cursor()
+				cur.executemany(query, data)
+			except lite.Error, e:
+				print e
+
+	def commit(self):
+		"""commits changes to the database"""
+		if self._con:
+			try:
+				self._con.commit()
+			except lite.Error, e:
+				self._con.rollback()
+				print e
+
+	def contains(self, query, data=()):
+		"""checks wheter the given query has results or not"""
+		if self._con:
+			try:
+				cur = self._con.cursor()
+				if data == ():
+					cur.execute(query)
+				else:
+					cur.execute(query, data)
+				rows = cur.fetchone()
+
+				if rows:
+					return True;
+				else:
+					return False;
+			except lite.Error, e:
+				print e
+
+
+
+##################################################
+###############        Exit        ###############
+##################################################
+class Exit:
 	def __init__(self, widget):
 		sys.exit()
 
 
-class GConf:
 
+##################################################
+###############        GConf       ###############
+##################################################
+class GConf:
 	def __init__ (self, appname, allowed={}):
 		self._domain = '/apps/%s/' % appname
 		self._allowed = allowed
@@ -152,8 +245,7 @@ class GConf:
 		else:
 			return None
 
-    # Public functions
-
+	# Public functions
 	def set_allowed (self, allowed):
 		self._allowed = allowed
 
@@ -244,10 +336,166 @@ class GConf:
 		self._gconf_client.set_float(self._domain + key, value)
 
 
-class AboutDialog:
 
+##################################################
+###############     FeedThread     ###############
+##################################################
+class FeedThread(Thread):
+	def run(self):
+		"""updates all feeds in the database und updates the infos"""
+		sq = SQLite()
+		sq.open(app_database)
+
+		feeds = sq.execute('select feed_url, title, url, img from feeds')
+		if len(feeds) > 0:
+			for feed in feeds:
+				feedinfo = self.parse_feed(feed[0])
+
+				if feedinfo['success']:
+					if feed[1] == None:
+						sq.execute('update feeds set title=? where feed_url=?', (unicode(feedinfo['feeddata']['title']), feed[0]))
+					if not feed[2] == unicode(feedinfo['feeddata']['link']):
+						sq.execute('update feeds set url=? where feed_url=?', (unicode(feedinfo['feeddata']['link']), feed[0]))
+					if not unicode(feedinfo['feeddata']['img']) == 'None':
+						sq.execute('update feeds set img=? where feed_url=?', (unicode(feedinfo['feeddata']['img']), feed[0]))
+
+					items = ()
+					for postdata in feedinfo['postdata']:
+						if not sq.contains('select * from posts where post_url=?', (postdata['link'],)):
+							items = items + ((unicode(postdata['link']), unicode(postdata['title']), unicode(feed[0])), )
+
+					if not items == ():
+						sq.executemany('insert into posts (post_url, title, feed_url) values (?,?,?)', items)
+
+		sq.commit()
+		sq.close()
+
+		gobject.idle_add(indicator.finnished_update)
+
+	def parse_feed(self, url):
+		"""parses a feed and returns the infos"""
+		feedinfo = {}
+		feedinfo['feeddata'] = {}
+		feedinfo['postdata'] = []
+		feedinfo['success'] = False
+		try:
+			rssfeed = feedparser.parse(url)
+			postdata = []
+			for val in rssfeed.entries:
+				val.title = string.replace(val.title, '\n', '')
+				if len(val.title) > 72:
+					substr = val.title[:72]
+					substr = substr.rpartition(' ')
+					if substr[0] != '':
+						val.title = substr[0] + '...'
+				v = {'title': val.title, 'link': val.link}
+				postdata.append(v)
+			feedinfo['postdata'] = postdata
+			feedimg = None
+			webimg = None
+			if 'image' in rssfeed.feed:
+				webimg = rssfeed.feed.image.href
+			elif 'logo' in rssfeed.feed:
+				webimg = rssfeed.feed.logo
+			elif 'icon' in rssfeed.feed:
+				webimg = rssfeed.feed.icon
+			if webimg != None:
+				ext = webimg.rsplit('.', 1)
+				md5hash = hashlib.md5(str(url)).hexdigest()
+				localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
+				urllib.urlretrieve(webimg, localimg)
+				feedimg = md5hash + '.' + ext[1]
+			feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
+			feedinfo['success'] = True
+		except:
+			pass
+
+		return feedinfo
+
+
+
+##################################################
+###############   AddFeedDialog    ###############
+##################################################
+class AddFeedDialog:
 	def __init__(self, widget):
+		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+		self.window.set_size_request(450, 120)
+		self.window.set_position(gtk.WIN_POS_CENTER)
+		self.window.set_title('Add feed ' + app_name)
+		self.window.connect('delete_event', self.cancel_dialog)
+		self.window.connect('key-press-event', self.keypress)
 
+		vbox = gtk.VBox(False, 10)
+		vbox.set_border_width(10)
+		self.window.add(vbox)
+		vbox.show()
+
+		hboxl = gtk.HBox(False, 0)
+		vbox.pack_start(hboxl, False, True, 0)
+		hboxl.show()
+
+		label = gtk.Label('Add a new feed url to show in the menu.')
+		label.set_justify(gtk.JUSTIFY_LEFT)
+		label.set_line_wrap(True)
+		hboxl.pack_start(label, False, True, 0)
+		label.show()
+
+		hbox2 = gtk.HBox(False, 0)
+		vbox.pack_start(hbox2, False, True, 0)
+		hbox2.show()
+
+		self._textbox = gtk.Entry()
+		hbox2.pack_start(self._textbox, True, True, 0)
+		self._textbox.connect("activate", self.save_dialog)
+		self._textbox.show()
+
+		hbox3 = gtk.HBox(True, 0)
+		vbox.pack_end(hbox3, False, True, 5)
+		hbox3.show()
+
+		button_cancel = gtk.Button('Cancel')
+		hbox3.pack_start(button_cancel, True, True, 0)
+		button_cancel.connect_object('clicked', self.cancel_dialog, button_cancel)
+		button_cancel.show()
+		button_save = gtk.Button('Add')
+		hbox3.pack_start(button_save, True, True, 0)
+		button_save.connect_object('clicked', self.save_dialog, None)
+		button_save.show()
+
+		self.window.set_keep_above(True)
+		self.window.show()
+
+	def cancel_dialog(self, widget, data=None):
+		"""cancel dialog"""
+		self.window.destroy()
+
+	def save_dialog(self, data):
+		"""save feed to config file and close add feed dialog"""
+		self.window.set_modal(True)
+		sq = SQLite()
+		sq.open(app_database)
+		sq.execute('insert into feeds (feed_url) values (?)', (unicode(self._textbox.get_text()),))
+		sq.commit()
+		sq.close()
+		self.window.destroy()
+
+		indicator.update_feeds(None, True, True)
+
+	def keypress(self, widget, data):
+		"""keypress handler"""
+		if data.keyval == gtk.keysyms.Escape:
+			self.window.destroy()
+		elif data.keyval == gtk.keysyms.Return:
+			self.save_dialog(None)
+
+
+
+##################################################
+###############     AboutDialog    ###############
+##################################################
+class AboutDialog:
+	def __init__(self, widget):
 		about = gtk.AboutDialog()
 		about.set_logo(gtk.gdk.pixbuf_new_from_file(app_logo))
 		about.set_name(app_name)
@@ -264,10 +512,12 @@ class AboutDialog:
 		about.destroy()
 
 
+
+##################################################
+###############  ConfigureDialog   ###############
+##################################################
 class ConfigureDialog:
-
 	def __init__(self, widget):
-
 		self.refreshtimeset = refreshtime
 		self.itemsperfeedset = itemsperfeed
 		self.autostartset = autostart
@@ -275,7 +525,7 @@ class ConfigureDialog:
 		self.usesubmenusset = usesubmenus
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-		self.window.set_size_request(550, 450)
+		self.window.set_size_request(650, 450)
 		self.window.set_position(gtk.WIN_POS_CENTER)
 		self.window.set_title('Configure ' + app_name)
 		self.window.connect('delete_event',self.cancel_dialog)
@@ -302,22 +552,35 @@ class ConfigureDialog:
 		vbox.pack_start(scrolled_window, True, True, 0)
 		scrolled_window.show()
 
-		liststore = gtk.ListStore(str)
+		liststore = gtk.ListStore(str, str, str)
 
-		rssf = open(app_config_file)
-		for line in rssf:
-			line = string.replace(line, '\n', '')
-			liststore.append([line])
-		rssf.close()
+		sq = SQLite()
+		sq.open(app_database)
+
+		feeds = sq.execute('select feed_url, title from feeds')
+		for feed in feeds:
+			liststore.append([unicode(feed[0]), unicode(feed[1]), unicode(feed[0])])
+
+		sq.close()
 
 		self.treeview = gtk.TreeView(liststore)
-		self.column = gtk.TreeViewColumn('URL')
-		self.treeview.append_column(self.column)
+
+		self.urlcolumn = gtk.TreeViewColumn('URL')
+		self.treeview.append_column(self.urlcolumn)
 		textrenderer = gtk.CellRendererText()
-		self.column.pack_start(textrenderer, True)
-		self.column.add_attribute(textrenderer, 'text', 0)
+		self.urlcolumn.pack_start(textrenderer, True)
+		self.urlcolumn.add_attribute(textrenderer, 'text', 0)
 		textrenderer.set_property('editable', True)
-		textrenderer.connect('edited', self.cell_edited, liststore)
+		textrenderer.connect('edited', self.cell_edited, liststore, 0)
+
+		textrenderer = gtk.CellRendererText()
+		self.titlecolumn = gtk.TreeViewColumn('Title')
+		self.treeview.append_column(self.titlecolumn)
+		self.titlecolumn.pack_start(textrenderer, True)
+		self.titlecolumn.add_attribute(textrenderer, 'text', 1)
+		textrenderer.set_property('editable', True)
+		textrenderer.connect('edited', self.cell_edited, liststore, 1)
+
 		self.treeview.set_headers_clickable(False)
 		self.treeview.set_reorderable(True)
 		self.treeview.connect('cursor-changed', self.selection_made)
@@ -432,21 +695,37 @@ class ConfigureDialog:
 		if sel[1] != None:
 			self.button_remove.set_sensitive(True)
 
-	def cell_edited(self, cell, row, new_text, data):
+	def cell_edited(self, cell, row, new_text, data, column):
 		"""update entry with edited value"""
-		data[row][0] = new_text
+		data[row][column] = new_text
 		return
 
 	def button_add_clicked(self, data):
 		"""add entry to list and focus cursor"""
-		sel = data.append([''])
+		sel = data.append(['', '', ''])
 		pos = data.get_path(sel)
-		self.treeview.set_cursor(pos,self.column,True)
+		self.treeview.set_cursor(pos, self.urlcolumn, True)
 
 	def button_remove_clicked(self, data):
 		"""remove selected entry from list"""
 		treesel = self.treeview.get_selection()
 		sel = treesel.get_selected()
+
+		sq = SQLite()
+		sq.open(app_database)
+
+		feed_url = sel[0].get_value(sel[1], 2)
+		sq.execute('delete from posts where feed_url=?', (feed_url,))
+
+		img = sq.execute('select img from feeds where feed_url=?', (feed_url,))
+		if os.path.exists(os.path.join(app_cache_dir, img[0])):
+			os.remove(os.path.join(app_cache_dir, img[0]))
+
+		sq.execute('delete from feeds where feed_url=?', (feed_url,))
+		
+		sq.commit()
+		sq.close()
+
 		data.remove(sel[1])
 		self.button_remove.set_sensitive(False)
 
@@ -538,104 +817,34 @@ class ConfigureDialog:
 			self.autostart_create()
 		else:
 			self.autostart_delete()
-		#todo - remove feed icons of deleted/changed urls
-		ret = []
+
+		sq = SQLite()
+		sq.open(app_database)
+
 		for row in data:
-			ret.append(row[0])
-		f = open(app_config_file, 'w')
-		for path in ret:
-			f.write(str(path)+'\n')
-		f.close()
+			if row[2] == '' and row[1] == '':
+				sq.execute('insert into feeds (feed_url) values (?)', (unicode(row[0]),))
+			elif row[2] == '' and row[1] != '':
+				sq.execute('insert into feeds (feed_url, title) values (?, ?)', (unicode(row[0]), unicode(row[1])))
+			elif row[2] == row[0]:
+				sq.execute('update feeds set title=? where feed_url=?', (unicode(row[1]), unicode(row[2])))
+			else:
+				sq.execute('update posts set feed_url=? where feed_url=?', (unicode(row[0]), unicode(row[2])))
+				sq.execute('update feeds set title=?, feed_url=? where feed_url=?', (unicode(row[1]), unicode(row[0]), unicode(row[2])))
+
+		sq.commit()
+		sq.close()
+
 		self.window.destroy()
-		indicator.parse_feedlist(None,True,True)
-
-
-class AddFeedDialog:
-
-	def __init__(self, widget):
-
-		self.refreshtimeset = refreshtime
-		self.itemsperfeedset = itemsperfeed
-		self.autostartset = autostart
-		self.shownotificationsset = shownotifications
-		self.usesubmenusset = usesubmenus
-
-		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-		self.window.set_size_request(450, 120)
-		self.window.set_position(gtk.WIN_POS_CENTER)
-		self.window.set_title('Add feed ' + app_name)
-		self.window.connect('delete_event',self.cancel_dialog)
-		self.window.connect('key-press-event', self.keypress)
-
-		vbox = gtk.VBox(False, 10)
-		vbox.set_border_width(10)
-		self.window.add(vbox)
-		vbox.show()
-
-		hboxl = gtk.HBox(False, 0)
-		vbox.pack_start(hboxl, False, True, 0)
-		hboxl.show()
-
-		label = gtk.Label('Add a feed url to show in the menu.')
-		label.set_justify(gtk.JUSTIFY_LEFT)
-		label.set_line_wrap(True)
-		hboxl.pack_start(label, False, True, 0)
-		label.show()
-
-		hbox2 = gtk.HBox(False, 0)
-		vbox.pack_start(hbox2, False, True, 0)
-		hbox2.show()
-
-		self._textbox = gtk.Entry()
-		hbox2.pack_start(self._textbox, True, True, 0)
-		self._textbox.connect("activate", self.save_dialog)
-		self._textbox.show()
-
-		hbox3 = gtk.HBox(True, 0)
-		vbox.pack_end(hbox3, False, True, 5)
-		hbox3.show()
-
-		button_cancel = gtk.Button('Cancel')
-		hbox3.pack_start(button_cancel, True, True, 0)
-		button_cancel.connect_object('clicked', self.cancel_dialog, button_cancel)
-		button_cancel.show()
-		button_save = gtk.Button('Add')
-		hbox3.pack_start(button_save, True, True, 0)
-		button_save.connect_object('clicked', self.save_dialog, None)
-		button_save.show()
-
-		self.window.set_keep_above(True)
-		self.window.show()
-
-	def cancel_dialog(self, widget, data=None):
-		"""cancel dialog"""
-		self.window.destroy()
-
-	def save_dialog(self, data):
-		"""save feed to config file and close add feed dialog"""
-		self.window.set_modal(True)
-		url = str(self._textbox.get_text())
-		f = open(app_config_file, 'a')
-		f.write(url+'\n')
-		f.close()
-		self.window.destroy()
-		indicator.feedlist.append(url)
-		indicator.parse_feed(url)
-		indicator.render_menu(indicator)
-
-	def keypress(self, widget, data):
-		"""keypress handler"""
-		if data.keyval == gtk.keysyms.Escape:
-			self.window.destroy()
-		elif data.keyval == gtk.keysyms.Return:
-			self.save_dialog(None)
+		indicator.update_feeds(None, True, True)
 
 
 
+##################################################
+###############    AppIndicator    ###############
+##################################################
 class AppIndicator:
-
 	def __init__(self):
-
 		global refreshtime
 		global stoptimer
 		global itemsperfeed
@@ -671,24 +880,13 @@ class AppIndicator:
 		if os.path.exists(app_autostart_file):
 			autostart = True
 
-		self.feedlist = []
-		self.feeds = []
-		self.cacheread = set()
-		self.cachenotified = set()
-
-		if os.path.isdir(app_config_dir) == False:
-			os.mkdir(app_config_dir,0700)
-
-		if os.path.isdir(app_cache_dir) == False:
-			os.mkdir(app_cache_dir,0700)
-
-		if os.path.isfile(app_config_file) == False:
-			ff = open(app_config_file, 'w')
-			ff.close()
-
-		if os.path.isfile(app_cache_file) == False:
-			ff = open(app_cache_file, 'w')
-			ff.close()
+		if not os.path.exists(app_database):
+			sq = SQLite()
+			sq.open(app_database)
+			sq.execute('CREATE TABLE feeds (feed_url TEXT PRIMARY KEY, url TEXT, title TEXT, img TEXT)')
+			sq.execute('CREATE TABLE posts (post_url TEXT PRIMARY KEY, title TEXT, read BOOLEAN DEFAULT false, feed_url TEXT NOT NULL, FOREIGN KEY(feed_url) REFERENCES feeds(feed_url))')
+			sq.commit()
+			sq.close()
 
 		self.ind = appindicator.Indicator(app_name, app_identifier, appindicator.CATEGORY_APPLICATION_STATUS)
 		self.ind.set_status(appindicator.STATUS_ACTIVE) #STATUS_PASSIVE = hidden, STATUS_ACTIVE = visible, STATUS_ATTENTION = want the users attention
@@ -696,295 +894,124 @@ class AppIndicator:
 		self.ind.set_icon(app_indicator_icon)
 
 		self.menu = gtk.Menu()
+		self.update_feeds(None, True, True)
 
-		self.updates_start(None, True)
-
-	def send_notification(self, title, message, image):
-		"""send feed updates to notify-osd"""
-		pynotify.init(title)
-		if image == None:
-			image = 'file://' + app_icon
-		n = pynotify.Notification(title, message, image)
-		n.set_hint_string('x-canonical-append','')
-		n.show()
-
-	def set_status(self,status):
+	def set_status(self, status):
 		"""turns the appindicator to attention and back to normal"""
-		if status == 'true':
+		if status:
 			self.ind.set_status(appindicator.STATUS_ATTENTION)
 		else:
 			self.ind.set_status(appindicator.STATUS_ACTIVE)
 
-	def file_cache_read(self):
-		"""get the cacheread values from file"""
-		self.cacheread.clear()
-		self.cachenotified.clear()
-		with open(app_cache_file, 'r') as fr:
-			eachline = fr.readlines()
-			for line in eachline:
-				line = string.replace(line, '\n', '')
-				self.cacheread.add(line)
-				self.cachenotified.add(line)
-
-	def file_cache_write(self):
-		"""write the cacheread values to file"""
-		with open(app_cache_file, 'w') as fw:
-			write = '\n'.join(self.cacheread)
-			fw.write(unicode(write))
-
-	def menuitem_allread(self, data):
-		"""adds all items to read and notify caches"""
-		for feednum,feedinfo in enumerate(self.feeds):
-			self.feed_read(feednum, feedinfo)
-		self.render_menu(self)
-
-	def menuitem_read(self, data, feednum, feedinfo):
-		"""adds feed to read"""
-		self.feed_read(feednum, feedinfo)
-		self.render_menu(self)
-
-	def feed_read(self, feednum, feedinfo):
-		"""adds all items of a feed to read"""
-		for val in feedinfo['postdata']:
-			mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
-			self.cacheread.add(mdhash)
-			self.cachenotified.add(mdhash)
-			feedinfo['readcount'] += 1
-		self.feeds[feednum] = feedinfo
-
-	def menuitem_allunread(self, data):
-		"""empties read and notify caches"""
-		self.cacheread.clear()
-		self.cachenotified.clear()
-		self.render_menu(self)
-
-	def menuitem_unread(self, data, feednum, feedinfo):
-		"""empties read for the specified feed and notify caches"""
-		for val in feedinfo['postdata']:
-			mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
-			self.cacheread.discard(mdhash)
-			self.cachenotified.discard(mdhash)
-		self.render_menu(self)
+	def send_notification(self, title, message, image):
+		"""send feed updates to notify-osd"""
+		if not title == None:
+			pynotify.init(title)
+		if image == None:
+			image = 'file://' + app_icon
+		n = pynotify.Notification((title if not title == '' else ''), message, image)
+		n.set_hint_string('x-canonical-append','')
+		n.show()
 
 	def menuitem_response_website(self, data, url):
 		"""open the feed's website url"""
 		webbrowser.open(url)
 
-	def menuitem_response(self, data, title, url):
+	def menuitem_response(self, data, url):
 		"""open the website page url"""
 		webbrowser.open(url)
-		mdhash = hashlib.md5(str(title) + str(url)).hexdigest()
-		self.cacheread.add(mdhash);
-		self.render_menu(self)
 
-	def create_menu_header(self, title, url):
-		"""create the menu heading for each feed"""
-		menu_row = gtk.MenuItem(title)
-		if url != '':
-			menu_row.connect('activate', self.menuitem_response_website, url)
-		return menu_row
+		sq = SQLite()
+		sq.open(app_database)
+		sq.execute('update posts set read =\'true\' where post_url =? ', (url,))
+		sq.commit()
+		sq.close()
 
-	def create_menu_item(self, title, url):
-		"""create the menu entries for each feed"""
-		mdhash = hashlib.md5(str(title) + str(url)).hexdigest()
-		if mdhash not in self.cacheread:
-			if usesubmenus == True:
-				menu_row = gtk.MenuItem(title)
-			else:
-				menu_row = gtk.MenuItem("        " + title)
-			menu_row.connect('activate', self.menuitem_response, title, url)
-			return menu_row
+		sleep(1)
+		self.render_menu()
 
-	def compare_feed_with_cache(self, rssfeed, feednum):
-		"""compare the rss feed with our stored copy"""
-		readsize = 0
-		hashlist = {}
-		posttitlelist = {}
-		postlinklist = {}
-		notifyhashlist = {}
-		feedmenu = []
-		feedinfo = self.feeds[feednum]
-		i = 0
-		for val in rssfeed:
-			hashed = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
-			hashlist[i] = hashed
-			posttitlelist[i] = val['title']
-			postlinklist[i] = val['link']
-			notifyhashlist[i] = hashed
-			i += 1
-		postsize = len(hashlist)
-		feedinfo['itemcount'] = postsize
-		for i, mdhash in hashlist.items():
-			if mdhash in self.cachenotified:
-				del notifyhashlist[i]
-			if mdhash in self.cacheread:
-				del posttitlelist[i]
-				del postlinklist[i]
-				if i in notifyhashlist:
-					del notifyhashlist[i]
-				readsize = readsize + 1
-		feedinfo['readcount'] = readsize
-		if len(notifyhashlist) > 0:
-			if shownotifications == True:
-				notifytitle = feedinfo['feeddata']['title']
-				count = 0
-				notifymsg = ''
-				notifylist = []
-				for i in sorted(notifyhashlist.iterkeys()):
-					notifylist.append(posttitlelist[i])
-					count += 1
-					if count > 3:
-						break
-				notifymsg = "\n".join(notifylist)
-				try:
-					self.send_notification(str(notifytitle),str(notifymsg),feedinfo['feeddata']['img'])
-				except:
-					pass
-			self.cachenotified|=set(notifyhashlist.values())
-		if len(posttitlelist) > 0:
-			for i in sorted(posttitlelist.iterkeys()):
-				name = posttitlelist[i]
-				link = postlinklist[i]
-				vals = name, link
-				feedmenu.append(vals)
-		self.feeds[feednum] = feedinfo
-		return feedmenu
-
-	def parse_feed(self, url):
-		feedinfo = {}
-		feedinfo['feeddata'] = {}
-		feedinfo['postdata'] = []
-		feedinfo['itemcount'] = 0
-		feedinfo['readcount'] = 0
-		feedinfo['success'] = False
-		try:
-			rssfeed = feedparser.parse(url)
-			postdata = []
-			for val in rssfeed.entries:
-				val.title = string.replace(val.title, '\n', '')
-				if len(val.title) > 72:
-					substr = val.title[:72]
-					substr = substr.rpartition(' ')
-					if substr[0] != '':
-						val.title = substr[0] + '...'
-				v = {'title': val.title, 'link': val.link}
-				postdata.append(v)
-			feedinfo['postdata'] = postdata
-			feedimg = None
-			webimg = None
-			if 'image' in rssfeed.feed:
-				webimg = rssfeed.feed.image.href
-			elif 'logo' in rssfeed.feed:
-				webimg = rssfeed.feed.logo
-			elif 'icon' in rssfeed.feed:
-				webimg = rssfeed.feed.icon
-			if webimg != None:
-				ext = webimg.rsplit('.', 1)
-				md5hash = hashlib.md5(str(url)).hexdigest()
-				localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
-				urllib.urlretrieve(webimg, localimg)
-				feedimg = localimg
-			feedinfo['feeddata'] = {'title': rssfeed.feed.title, 'link': rssfeed.feed.link, 'img': feedimg}
-			feedinfo['success'] = True
-		except:
-			pass
-		self.feeds.append(feedinfo)
-
-	def parse_feedlist(self, data, fetchlist, timeroverride=False):
-		"""parse through the rss feed in the array or fetch from the url"""
+	def updates_toggle(self, data):
+		"""toggle updating"""
 		global stoptimer
-		if stoptimer == True and timeroverride == False:
-			return False
+		if stoptimer == True:
+			stoptimer = False
+			gconf['stoptimer'] = False
+			if shownotifications:
+				self.send_notification(app_name + ' - Started','Feeds will update every ' + str(refreshtime/60) + ' minutes', app_logo)
+			self.update_feeds(None, True, True)
 		else:
-			del self.feeds[:]
-			feednumber = 0
-			if fetchlist == True:
-				del self.feedlist[:]
-				try:
-					rssf = open(app_config_file)
-					for line in rssf:
-						line = string.replace(line, '\n', '')
-						self.feedlist.append(line)
-					rssf.close()
-				except:
-					pass
-			if len(self.feedlist) > 0:
-				for url in self.feedlist:
-					self.parse_feed(url)
-					feednumber += 1
-				self.render_menu(self)
-				return True
-			else:
-				stoptimer = True
-				self.render_menu(self)
-				return False
+			stoptimer = True
+			gconf['stoptimer'] = True
+			if shownotifications:
+				self.send_notification(app_name + ' - Stopped','Feeds will not update automatically', app_logo)
 
-	def render_menu(self,data):
-		"""populate the menu"""
-		global stoptimer
-		unreadcount = 0
+	def render_menu_empty(self, data):
+		"""populate an empty menu"""
 		for child in self.menu.get_children():
 			child.destroy()
-		if len(self.feeds) > 0:
-			for index,feedinfo in enumerate(self.feeds):
-				if feedinfo['success'] == True:
-					feedmenu = self.compare_feed_with_cache(feedinfo['postdata'], index)
-					feedunreadcount = feedinfo['itemcount'] - feedinfo['readcount']
-					if usesubmenus == True:
-						menu_header = self.create_menu_header('(' + str(feedunreadcount) + ') ' + str(feedinfo['feeddata']['title']), '')
-						menu_row = self.create_menu_header('Open Website', feedinfo['feeddata']['link'])
-						submenu = gtk.Menu()
+		menu_loading = gtk.MenuItem('Loading ...')
+		self.menu.append(menu_loading)
+		menu_loading.set_sensitive(False)
+		self.menu.show_all()
+		self.ind.set_menu(self.menu)
+		self.set_status(False)
+
+	def render_menu(self):
+		"""populate the menu"""
+		global stoptimer
+
+		for child in self.menu.get_children():
+			child.destroy()
+
+		sq = SQLite()
+		sq.open(app_database)
+
+		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') from feeds')
+		hasfeeds = len(feeds) > 0
+		for feed in feeds:
+			if usesubmenus == True:
+				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), '')
+				menu_row = self.create_menu_header('Open Website', feed[1])
+				submenu = gtk.Menu()
+				submenu.append(menu_row)
+				submenu_read = gtk.MenuItem('Mark as read')
+				submenu_read.connect('activate', self.feed_read, feed[2])
+				submenu.append(submenu_read)
+				submenu_read = gtk.MenuItem('Mark as unread')
+				submenu_read.connect('activate', self.feed_unread, feed[2])
+				submenu.append(submenu_read)
+
+				posts = sq.execute(str('select title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
+				if len(posts) > 0:
+					posts.reverse()
+					submenu.append(gtk.SeparatorMenuItem())
+				
+					for post in posts:
+						menu_row = self.create_menu_item(post[0], post[1])
 						submenu.append(menu_row)
-						submenu_read = gtk.MenuItem('Mark as read')
-						submenu_read.connect('activate', self.menuitem_read, index, feedinfo)
-						submenu.append(submenu_read)
-						submenu_read = gtk.MenuItem('Mark as unread')
-						submenu_read.connect('activate', self.menuitem_unread, index, feedinfo)
-						submenu.append(submenu_read)
-						submenu_reload = gtk.MenuItem('Reload feed')
-						submenu_reload.connect('activate', self.update_feed, feedinfo['feeddata']['link'])
-						submenu.append(submenu_reload)
-						if len(feedmenu) > 0:
-							menu_spacer = gtk.SeparatorMenuItem()
-							submenu.append(menu_spacer)
-							feedmenu.reverse()
-							try:
-								x = feedmenu[-itemsperfeed:]
-								for i,v in enumerate(x):
-									menu_row = self.create_menu_item(v[0], v[1])
-									submenu.append(menu_row)
-							except IndexError:
-								pass
-						menu_header.set_submenu(submenu)
-						self.menu.append(menu_header)
-					else:
-						menu_header = self.create_menu_header('(' + str(feedunreadcount) + ') ' + str(feedinfo['feeddata']['title']), feedinfo['feeddata']['link'])
-						self.menu.append(menu_header)
-						try:
-							x = feedmenu[0:itemsperfeed]
-							for i,v in enumerate(x):
-								menu_row = self.create_menu_item(v[0], v[1])
-								self.menu.append(menu_row)
-						except IndexError:
-							pass
-					unreadcount += feedunreadcount
-				else:
-					menu_header = self.create_menu_header('Failed: ' + str(self.feedlist[index]), '')
-					self.menu.append(menu_header)
-					menu_header.set_sensitive(False)
-			menu_spacer = gtk.SeparatorMenuItem()
-			self.menu.append(menu_spacer)
+
+				menu_header.set_submenu(submenu)
+				self.menu.append(menu_header)
+			else:
+				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), feed[1])
+				self.menu.append(menu_header)
+
+		hasunread = sq.contains('select * from posts where read=\'false\'')
+
+		sq.close()
+
+		if hasfeeds:
+			self.menu.append(gtk.SeparatorMenuItem())
 			menu_read = gtk.MenuItem('Mark all as read')
-			menu_read.connect('activate', self.menuitem_allread)
+			menu_read.connect('activate', self.feed_read, '')
 			self.menu.append(menu_read)
 			menu_unread = gtk.MenuItem('Mark all as unread')
-			menu_unread.connect('activate', self.menuitem_allunread)
+			menu_unread.connect('activate', self.feed_unread, '')
 			self.menu.append(menu_unread)
 			menu_update = gtk.MenuItem('Reload all feeds')
-			menu_update.connect('activate', self.parse_feedlist, True, True)
+			menu_update.connect('activate', self.update_feeds, True, True)
 			self.menu.append(menu_update)
-			menu_spacer = gtk.SeparatorMenuItem()
-			self.menu.append(menu_spacer)
+			self.menu.append(gtk.SeparatorMenuItem())
 			if refreshtime/60 == 1:
 				menu_updatecheck = gtk.CheckMenuItem('Update feeds every minute')
 			else:
@@ -999,13 +1026,8 @@ class AppIndicator:
 			menu_notice = gtk.MenuItem('No feeds defined!')
 			self.menu.append(menu_notice)
 			menu_notice.set_sensitive(False)
-			menu_spacer = gtk.SeparatorMenuItem()
-			self.menu.append(menu_spacer)
-			menu_update = gtk.MenuItem('Reload all feeds')
-			menu_update.connect('activate', self.updates_start)
-			self.menu.append(menu_update)
-			menu_spacer = gtk.SeparatorMenuItem()
-			self.menu.append(menu_spacer)
+			self.menu.append(gtk.SeparatorMenuItem())
+
 		menu_add = gtk.MenuItem('Add feed')
 		self.menu.append(menu_add)
 		menu_add.connect('activate', AddFeedDialog)
@@ -1017,55 +1039,115 @@ class AppIndicator:
 		menu_quit.connect('activate', Exit)
 		self.menu.show_all()
 		self.ind.set_menu(self.menu)
-		if (unreadcount > 0):
-			self.set_status('true')
+
+		if hasunread:
+			self.set_status(True)
 		else:
-			self.set_status('false')
-		self.file_cache_write()
+			self.set_status(False)
 
-	def render_menu_empty(self, data):
-		"""populate the menu"""
-		for child in self.menu.get_children():
-			child.destroy()
-		menu_loading = gtk.MenuItem('Loading ...')
-		self.menu.append(menu_loading)
-		menu_loading.set_sensitive(False)
-		self.menu.show_all()
-		self.ind.set_menu(self.menu)
+	def create_menu_header(self, title, url):
+		"""create the menu heading for each feed"""
+		menu_row = gtk.MenuItem(title)
+		if url != '':
+			menu_row.connect('activate', self.menuitem_response_website, url)
+		return menu_row
 
-	def updates_toggle(self, data):
-		"""toggle updating"""
+	def create_menu_item(self, title, url):
+		"""create the menu entries for each feed"""
+		if usesubmenus == True:
+			menu_row = gtk.MenuItem(title)
+		else:
+			menu_row = gtk.MenuItem("        " + title)
+		menu_row.connect('activate', self.menuitem_response, url)
+		return menu_row
+
+	def feed_read(self, data, url):
+		"""marks all posts of all feeds or a specific feed as unread"""
+		sq = SQLite()
+		sq.open(app_database)
+		if url == '':
+			sq.execute('update posts set read=\'true\'')
+		else:
+			sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
+		sq.commit()
+		sq.close()
+
+		sleep(1)
+		self.render_menu()
+
+	def feed_unread(self, data, url):
+		"""marks all posts of all feeds or a specific feed as read"""
+		sq = SQLite()
+		sq.open(app_database)
+		if url == '':
+			sq.execute('update posts set read=\'false\'')
+		else:
+			sq.execute('update posts set read=\'false\' where feed_url=?', (url,))
+		sq.commit()
+		sq.close()
+
+		sleep(1)
+		self.render_menu()
+
+	def update_feeds(self, data=None, timeroverride=False, starttimer=False):
+		"""start updating feeds"""
 		global stoptimer
-		if stoptimer == True:
-			stoptimer = False
-			gconf['stoptimer'] = False
-			self.send_notification(app_name + ' - Started','Feeds will update every ' + str(refreshtime/60) + ' minutes', None)
-			self.updates_start(self)
-		else:
-			stoptimer = True
-			gconf['stoptimer'] = True
-			self.send_notification(app_name + ' - Stopped','Feeds will not update automatically', None)
 
-	def updates_start(self,data=None,timeroverride=False):
-		"""start updating"""
-		self.file_cache_read()
-		self.parse_feedlist(None,True,timeroverride)
-		glib.timeout_add_seconds(refreshtime, self.parse_feedlist, None, False)
+		if stoptimer == True and timeroverride == False:
+			return False
 
-	def update_feed(self, data, url):
-		"""updates a single feed"""
-		for index, feedinfo in enumerate(self.feeds):
-			if feedinfo['feeddata']['link'] == url:
-				self.feeds.remove(self.feeds[index])
-		self.parse_feed(url)
-		self.render_menu(self)
+		if starttimer:
+			glib.timeout_add_seconds(refreshtime, self.update_feeds, True)
 
+		if shownotifications:
+			self.send_notification(app_name, 'Feeds will be updated shortly', app_logo)
+
+		self.render_menu_empty(None)
+		FeedThread().start()
+		return True
+
+	def finnished_update(self):
+		"""renders menu and shows notification after FeadThread has endet"""
+		self.render_menu()
+
+		if shownotifications:
+			sq = SQLite()
+			sq.open(app_database)
+
+			feeds = sq.execute('select title, img, feed_url from feeds')
+
+			if len(feeds) > 0:
+				for feed in feeds:
+					count = 0
+					notifymsg = ''
+					posts = sq.execute('select title from posts where read = \'false\' and feed_url=?', (feed[2],))
+
+					if len(posts) > 0:
+						for post in posts:
+							count += 1
+							if count > 3:
+								break
+							notifymsg += '\n' + unicode(post[0])
+
+						if feed[1] == None:
+							self.send_notification(feed[0], notifymsg, None)
+						else:
+							self.send_notification(feed[0], notifymsg, os.path.join(app_cache_dir, feed[1]))
+			else:
+				self.send_notification(app_name, 'Finnished updating feeds', app_logo)
+
+			sq.close()
+
+
+
+##################################################
 def main():
-	gtk.main()
+	gtk.gdk.threads_init()
+	gtk.mainloop()
 	return 0
 
 if __name__ == "__main__":
-	'''delay to make sure config files are accessible on autostart'''
+	"""delay to make sure config files are accessible on autostart"""
 	cmdline = sys.argv
 	if len(cmdline) > 1:
 		if cmdline[1] == '--autostarted':
@@ -1075,4 +1157,3 @@ if __name__ == "__main__":
 	gconf = GConf(app_identifier)
 	indicator = AppIndicator()
 	main()
-
