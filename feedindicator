@@ -59,12 +59,12 @@ app_indicator_icon_attention = 'indicator-feedindicator-attention'
 # XDG config
 xdg_config_dir = glib.get_user_config_dir()
 app_config_dir = os.path.join(xdg_config_dir, app_identifier)
-app_config_file = os.path.join(app_config_dir, 'feeds.cfg')
+app_config_file = os.path.join(app_config_dir, 'feeds.test.cfg')
 
 # XDG cache
 xdg_cache_dir = glib.get_user_cache_dir()
 app_cache_dir = os.path.join(xdg_cache_dir, app_identifier)
-app_cache_file = os.path.join(app_cache_dir, 'feeds.dat')
+app_cache_file = os.path.join(app_cache_dir, 'feeds.test.dat')
 
 # /usr/share/
 app_share_dir = '/usr/share/'+app_identifier+'/'
@@ -762,8 +762,8 @@ class AppIndicator:
 		"""empties read for the specified feed and notify caches"""
 		for val in feedinfo['postdata']:
 			mdhash = hashlib.md5(str(val['title']) + str(val['link'])).hexdigest()
-			self.cacheread.remove(mdhash)
-			self.cachenotified.remove(mdhash)
+			self.cacheread.discard(mdhash)
+			self.cachenotified.discard(mdhash)
 		self.render_menu(self)
 
 	def menuitem_response_website(self, data, url):
@@ -941,6 +941,9 @@ class AppIndicator:
 						submenu_read = gtk.MenuItem('Mark as unread')
 						submenu_read.connect('activate', self.menuitem_unread, index, feedinfo)
 						submenu.append(submenu_read)
+						submenu_reload = gtk.MenuItem('Reload feed')
+						submenu_reload.connect('activate', self.update_feed, feedinfo['feeddata']['link'])
+						submenu.append(submenu_reload)
 						if len(feedmenu) > 0:
 							menu_spacer = gtk.SeparatorMenuItem()
 							submenu.append(menu_spacer)
@@ -1020,6 +1023,16 @@ class AppIndicator:
 			self.set_status('false')
 		self.file_cache_write()
 
+	def render_menu_empty(self, data):
+		"""populate the menu"""
+		for child in self.menu.get_children():
+			child.destroy()
+		menu_loading = gtk.MenuItem('Loading ...')
+		self.menu.append(menu_loading)
+		menu_loading.set_sensitive(False)
+		self.menu.show_all()
+		self.ind.set_menu(self.menu)
+
 	def updates_toggle(self, data):
 		"""toggle updating"""
 		global stoptimer
@@ -1039,6 +1052,13 @@ class AppIndicator:
 		self.parse_feedlist(None,True,timeroverride)
 		glib.timeout_add_seconds(refreshtime, self.parse_feedlist, None, False)
 
+	def update_feed(self, data, url):
+		"""updates a single feed"""
+		for index, feedinfo in enumerate(self.feeds):
+			if feedinfo['feeddata']['link'] == url:
+				self.feeds.remove(self.feeds[index])
+		self.parse_feed(url)
+		self.render_menu(self)
 
 def main():
 	gtk.main()
