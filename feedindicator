@@ -62,12 +62,12 @@ app_indicator_icon_attention = 'indicator-feedindicator-attention'
 # XDG config
 xdg_config_dir = glib.get_user_config_dir()
 app_config_dir = os.path.join(xdg_config_dir, app_identifier)
-app_config_file = os.path.join(app_config_dir, 'feeds.test.cfg')
+#app_config_file = os.path.join(app_config_dir, 'feeds.test.cfg')
 
 # XDG cache
 xdg_cache_dir = glib.get_user_cache_dir()
 app_cache_dir = os.path.join(xdg_cache_dir, app_identifier)
-app_cache_file = os.path.join(app_cache_dir, 'feeds.test.dat')
+#app_cache_file = os.path.join(app_cache_dir, 'feeds.test.dat')
 
 # /usr/share/
 app_share_dir = '/usr/share/'+app_identifier+'/'
