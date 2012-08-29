@@ -995,6 +995,21 @@ class AppIndicator:
 				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), feed[1])
 				self.menu.append(menu_header)
 
+				posts = sq.execute(str('select title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
+				if len(posts) > 0:
+					posts.reverse()
+
+					for post in posts:
+						menu_row = self.create_menu_item(post[0], post[1])
+						self.menu.append(menu_row)
+#					try:
+#						x = feedmenu[0:itemsperfeed]
+#						for i,v in enumerate(x):
+#							menu_row = self.create_menu_item(v[0], v[1])
+#							self.menu.append(menu_row)
+#					except IndexError:
+#						pass
+
 		hasunread = sq.contains('select * from posts where read=\'false\'')
 
 		sq.close()
