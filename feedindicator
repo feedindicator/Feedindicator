@@ -557,7 +557,7 @@ class ConfigureDialog:
 		sq = SQLite()
 		sq.open(app_database)
 
-		feeds = sq.execute('select feed_url, title from feeds')
+		feeds = sq.execute('select feed_url, title from feeds order by title')
 		for feed in feeds:
 			liststore.append([unicode(feed[0]), unicode(feed[1]), unicode(feed[0])])
 
@@ -718,11 +718,10 @@ class ConfigureDialog:
 		sq.execute('delete from posts where feed_url=?', (feed_url,))
 
 		img = sq.execute('select img from feeds where feed_url=?', (feed_url,))
-		if os.path.exists(os.path.join(app_cache_dir, img[0])):
-			os.remove(os.path.join(app_cache_dir, img[0]))
+		if os.path.exists(os.path.join(app_cache_dir, unicode(img[0]))):
+			os.remove(os.path.join(app_cache_dir, unicode(img[0])))
 
 		sq.execute('delete from feeds where feed_url=?', (feed_url,))
-		
 		sq.commit()
 		sq.close()
 
@@ -966,7 +965,7 @@ class AppIndicator:
 		sq = SQLite()
 		sq.open(app_database)
 
-		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') from feeds')
+		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') from feeds order by title')
 		hasfeeds = len(feeds) > 0
 		for feed in feeds:
 			if usesubmenus == True:
