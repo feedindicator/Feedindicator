@@ -888,7 +888,9 @@ class AppIndicator:
 			feedinfo['success'] = True
 		except:
 			pass
-		self.feeds.append(feedinfo)
+		#self.feeds.append(feedinfo)
+
+		return feedinfo
 
 	def parse_feedlist(self, data, fetchlist, timeroverride=False):
 		"""parse through the rss feed in the array or fetch from the url"""
@@ -910,7 +912,7 @@ class AppIndicator:
 					pass
 			if len(self.feedlist) > 0:
 				for url in self.feedlist:
-					self.parse_feed(url)
+					self.feeds.append(self.parse_feed(url))
 					feednumber += 1
 				self.render_menu(self)
 				return True
@@ -942,7 +944,7 @@ class AppIndicator:
 						submenu_read.connect('activate', self.menuitem_unread, index, feedinfo)
 						submenu.append(submenu_read)
 						submenu_reload = gtk.MenuItem('Reload feed')
-						submenu_reload.connect('activate', self.update_feed, feedinfo['feeddata']['link'])
+						submenu_reload.connect('activate', self.update_feed, index)
 						submenu.append(submenu_reload)
 						if len(feedmenu) > 0:
 							menu_spacer = gtk.SeparatorMenuItem()
@@ -1052,12 +1054,9 @@ class AppIndicator:
 		self.parse_feedlist(None,True,timeroverride)
 		glib.timeout_add_seconds(refreshtime, self.parse_feedlist, None, False)
 
-	def update_feed(self, data, url):
+	def update_feed(self, data, index):
 		"""updates a single feed"""
-		for index, feedinfo in enumerate(self.feeds):
-			if feedinfo['feeddata']['link'] == url:
-				self.feeds.remove(self.feeds[index])
-		self.parse_feed(url)
+		self.feeds[index] = self.parse_feed(str(self.feedlist[index]))
 		self.render_menu(self)
 
 def main():
