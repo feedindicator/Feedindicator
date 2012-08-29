@@ -1002,13 +1002,6 @@ class AppIndicator:
 					for post in posts:
 						menu_row = self.create_menu_item(post[0], post[1])
 						self.menu.append(menu_row)
-#					try:
-#						x = feedmenu[0:itemsperfeed]
-#						for i,v in enumerate(x):
-#							menu_row = self.create_menu_item(v[0], v[1])
-#							self.menu.append(menu_row)
-#					except IndexError:
-#						pass
 
 		hasunread = sq.contains('select * from posts where read=\'false\'')
 
