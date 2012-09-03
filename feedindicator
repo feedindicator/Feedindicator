@@ -120,6 +120,9 @@ usesubmenus = False
 # default show notification popups
 shownotifications = True
 
+# default sound for new posts
+sound = "/usr/bin/mplayer -ao alsa /usr/share/sounds/ubuntu/stereo/message.ogg"
+
 
 
 ##################################################
@@ -525,7 +528,7 @@ class ConfigureDialog:
 		self.usesubmenusset = usesubmenus
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-		self.window.set_size_request(650, 450)
+		self.window.set_size_request(850, 550)
 		self.window.set_position(gtk.WIN_POS_CENTER)
 		self.window.set_title('Configure ' + app_name)
 		self.window.connect('delete_event',self.cancel_dialog)
@@ -668,20 +671,37 @@ class ConfigureDialog:
 		check_usesubmenus.connect('toggled', self.usesubmenus_toggle)
 		check_usesubmenus.show()
 
+		hbox3l = gtk.HBox(False, 0)
+		vbox.pack_start(hbox3l, False, True, 0)
+		hbox3l.show()
+
+		entrylabel = gtk.Label('Command for signal tone for new posts (or any other command you want to run after finishing updating the feeds):')
+		hbox3l.pack_start(entrylabel, False, False, 0)
+		entrylabel.show()
+
 		hbox3 = gtk.HBox(True, 0)
-		vbox.pack_end(hbox3, False, True, 5)
+		vbox.pack_start(hbox3, False, True, 0)
 		hbox3.show()
 
+		self._textbox = gtk.Entry()
+		hbox3.pack_start(self._textbox, True, True, 0)
+		self._textbox.set_text(sound)
+		self._textbox.show()
+
+		hbox4 = gtk.HBox(True, 0)
+		vbox.pack_end(hbox4, False, True, 5)
+		hbox4.show()
+
 		button_about = gtk.Button('About')
-		hbox3.pack_start(button_about, True, True, 0)
+		hbox4.pack_start(button_about, True, True, 0)
 		button_about.connect_object('clicked', AboutDialog, button_about)
 		button_about.show()
 		button_cancel = gtk.Button('Cancel')
-		hbox3.pack_start(button_cancel, True, True, 0)
+		hbox4.pack_start(button_cancel, True, True, 0)
 		button_cancel.connect_object('clicked', self.cancel_dialog, button_cancel)
 		button_cancel.show()
 		button_save = gtk.Button('Save')
-		hbox3.pack_start(button_save, True, True, 0)
+		hbox4.pack_start(button_save, True, True, 0)
 		button_save.connect_object('clicked', self.save_dialog, liststore)
 		button_save.show()
 
@@ -803,6 +823,7 @@ class ConfigureDialog:
 		global autostart
 		global shownotifications
 		global usesubmenus
+		global sound
 		refreshtime = self.refreshtimeset
 		gconf['refreshtime'] = self.refreshtimeset
 		itemsperfeed = self.itemsperfeedset
@@ -810,7 +831,9 @@ class ConfigureDialog:
 		shownotifications = self.shownotificationsset
 		gconf['shownotifications'] = self.shownotificationsset
 		usesubmenus = self.usesubmenusset
-		gconf['usesubmenus'] = self.usesubmenusset
+		gconf['sound'] = self.usesubmenusset
+		sound = self._textbox.get_text()
+		gconf['sound'] = self._textbox.get_text()
 		autostart = self.autostartset
 		if autostart == True:
 			self.autostart_create()
@@ -850,6 +873,7 @@ class AppIndicator:
 		global autostart
 		global shownotifications
 		global usesubmenus
+		global sound
 
 		if gconf['refreshtime'] is not None:
 			refreshtime = gconf['refreshtime'];
@@ -875,6 +899,11 @@ class AppIndicator:
 			usesubmenus = gconf['usesubmenus'];
 		else:
 			gconf['usesubmenus'] = usesubmenus;
+
+		if gconf['sound'] is not None:
+			sound = gconf['sound'];
+		else:
+			gconf['sound'] = sound;
 
 		if os.path.exists(app_autostart_file):
 			autostart = True
@@ -1143,6 +1172,9 @@ class AppIndicator:
 			feeds = sq.execute('select title, img, feed_url from feeds order by (select count(*) from posts where posts.feed_url=feeds.feed_url and read = \'false\') limit 50') #notification stack is limit to 50
 
 			if len(feeds) > 0:
+				if not sound == '':
+					os.system(sound)
+
 				for feed in feeds:
 					count = 0
 					notifymsg = ''
