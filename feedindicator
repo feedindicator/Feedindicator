@@ -540,7 +540,7 @@ class ConfigureDialog:
 		vbox.pack_start(hboxl, False, True, 0)
 		hboxl.show()
 
-		label = gtk.Label('Configure feed urls to show in the menu.\nDrag-and-drop entries in the list below to sort.')
+		label = gtk.Label('Configure feed urls to show in the menu.')
 		label.set_justify(gtk.JUSTIFY_LEFT)
 		label.set_line_wrap(True)
 		hboxl.pack_start(label, False, True, 0)
@@ -965,7 +965,7 @@ class AppIndicator:
 		sq = SQLite()
 		sq.open(app_database)
 
-		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') from feeds order by title')
+		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds order by c desc, title')
 		hasfeeds = len(feeds) > 0
 		for feed in feeds:
 			if usesubmenus == True:
