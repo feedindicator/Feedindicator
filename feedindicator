@@ -1121,7 +1121,7 @@ class AppIndicator:
 			sq = SQLite()
 			sq.open(app_database)
 
-			feeds = sq.execute('select title, img, feed_url from feeds')
+			feeds = sq.execute('select title, img, feed_url from feeds order by (select count(*) from posts where posts.feed_url=feeds.feed_url and read = \'false\') limit 50') #notification stack is limit to 50
 
 			if len(feeds) > 0:
 				for feed in feeds:
