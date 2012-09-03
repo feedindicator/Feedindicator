@@ -973,6 +973,9 @@ class AppIndicator:
 				menu_row = self.create_menu_header('Open Website', feed[1])
 				submenu = gtk.Menu()
 				submenu.append(menu_row)
+				submenu_open_unread = gtk.MenuItem('Open all unread')
+				submenu_open_unread.connect('activate', self.open_unread, feed[2])
+				submenu.append(submenu_open_unread)
 				submenu_read = gtk.MenuItem('Mark as read')
 				submenu_read.connect('activate', self.feed_read, feed[2])
 				submenu.append(submenu_read)
@@ -1067,6 +1070,22 @@ class AppIndicator:
 			menu_row = gtk.MenuItem("        " + title)
 		menu_row.connect('activate', self.menuitem_response, url)
 		return menu_row
+
+	def open_unread(self, data, url):
+		"""opens all unread post of the given feed"""
+		sq = SQLite()
+		sq.open(app_database)
+
+		posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', (url,))
+		for post in posts:
+			webbrowser.open(post[0])
+
+		sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
+		sq.commit()
+		sq.close()
+
+		sleep(1)
+		self.render_menu()
 
 	def feed_read(self, data, url):
 		"""marks all posts of all feeds or a specific feed as unread"""
