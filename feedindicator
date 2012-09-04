@@ -404,6 +404,9 @@ class FeedThread(Thread):
 				webimg = rssfeed.feed.icon
 			if webimg != None:
 				ext = webimg.rsplit('.', 1)
+				if len(ext[1]) > 5 or len(ext[1]) == 0:
+					ext[0] = webimg
+					ext[1] = 'jpg'
 				md5hash = hashlib.md5(str(url)).hexdigest()
 				localimg = os.path.join(app_cache_dir, md5hash + '.' + ext[1])
 				urllib.urlretrieve(webimg, localimg)
