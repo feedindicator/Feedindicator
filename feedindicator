@@ -958,7 +958,7 @@ class AppIndicator:
 		sq.commit()
 		sq.close()
 
-		sleep(1)
+		sleep(0.5)
 		self.render_menu()
 
 	def updates_toggle(self, data):
@@ -1111,12 +1111,13 @@ class AppIndicator:
 		posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', (url,))
 		for post in posts:
 			webbrowser.open(post[0])
+			sleep(0.5)
 
 		sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
 		sq.commit()
 		sq.close()
 
-		sleep(1)
+		sleep(0.5)
 		self.render_menu()
 
 	def feed_read(self, data, url):
@@ -1130,7 +1131,7 @@ class AppIndicator:
 		sq.commit()
 		sq.close()
 
-		sleep(1)
+		sleep(0.5)
 		self.render_menu()
 
 	def feed_unread(self, data, url):
@@ -1144,7 +1145,7 @@ class AppIndicator:
 		sq.commit()
 		sq.close()
 
-		sleep(1)
+		sleep(0.5)
 		self.render_menu()
 
 	def update_feeds(self, data=None, timeroverride=False, starttimer=False):
