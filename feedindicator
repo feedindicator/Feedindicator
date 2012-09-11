@@ -123,6 +123,9 @@ shownotifications = True
 # default sound for new posts
 sound = "/usr/bin/mplayer -ao alsa /usr/share/sounds/ubuntu/stereo/message.ogg"
 
+# default position of the feeds top or button of the menu
+feedstop = True
+
 
 
 ##################################################
@@ -674,6 +677,13 @@ class ConfigureDialog:
 		check_usesubmenus.connect('toggled', self.usesubmenus_toggle)
 		check_usesubmenus.show()
 
+		check_feedstop = gtk.CheckButton('Show feeds at top of menu')
+		hbox2t.pack_start(check_feedstop, True, True, 0)
+		if feedstop == True:
+			check_feedstop.set_active(True)
+		check_feedstop.connect('toggled', self.feedstop_toggle)
+		check_feedstop.show()
+
 		hbox3l = gtk.HBox(False, 0)
 		vbox.pack_start(hbox3l, False, True, 0)
 		hbox3l.show()
@@ -792,6 +802,13 @@ class ConfigureDialog:
 		else:
 			self.usesubmenusset = False
 
+	def feedstop_toggle(self, widget):
+		"""check toggle status"""
+		if widget.get_active():
+			self.feedstopset = True
+		else:
+			self.feedstopset = False
+
 	def autostart_create(self):
 		"""create autostart file"""
 		global autostart
@@ -827,6 +844,7 @@ class ConfigureDialog:
 		global shownotifications
 		global usesubmenus
 		global sound
+		global feedstop
 		refreshtime = self.refreshtimeset
 		gconf['refreshtime'] = self.refreshtimeset
 		itemsperfeed = self.itemsperfeedset
@@ -834,7 +852,9 @@ class ConfigureDialog:
 		shownotifications = self.shownotificationsset
 		gconf['shownotifications'] = self.shownotificationsset
 		usesubmenus = self.usesubmenusset
-		gconf['sound'] = self.usesubmenusset
+		gconf['usesubmenus'] = self.usesubmenusset
+		feedstop = self.feedstopset
+		gconf['feedstop'] = self.feedstopset
 		sound = self._textbox.get_text()
 		gconf['sound'] = self._textbox.get_text()
 		autostart = self.autostartset
@@ -877,6 +897,7 @@ class AppIndicator:
 		global shownotifications
 		global usesubmenus
 		global sound
+		global feedstop
 
 		if gconf['refreshtime'] is not None:
 			refreshtime = gconf['refreshtime'];
@@ -902,6 +923,11 @@ class AppIndicator:
 			usesubmenus = gconf['usesubmenus'];
 		else:
 			gconf['usesubmenus'] = usesubmenus;
+
+		if gconf['feedstop'] is not None:
+			feedstop = gconf['feedstop'];
+		else:
+			gconf['feedstop'] = feedstop;
 
 		if gconf['sound'] is not None:
 			sound = gconf['sound'];
@@ -990,6 +1016,7 @@ class AppIndicator:
 	def render_menu(self):
 		"""populate the menu"""
 		global stoptimer
+		global feedstop
 
 		for child in self.menu.get_children():
 			child.destroy()
@@ -999,6 +1026,11 @@ class AppIndicator:
 
 		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds order by c desc, title')
 		hasfeeds = len(feeds) > 0
+
+		if feedstop == False:
+			self.render_menu_conf(hasfeeds)
+			self.menu.append(gtk.SeparatorMenuItem())
+
 		for feed in feeds:
 			if usesubmenus == True:
 				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), '')
@@ -1042,8 +1074,25 @@ class AppIndicator:
 
 		sq.close()
 
+		if feedstop == True:
+			self.render_menu_conf(hasfeeds)
+
+		self.menu.show_all()
+		self.ind.set_menu(self.menu)
+
+		if hasunread:
+			self.set_status(True)
+		else:
+			self.set_status(False)
+
+	def render_menu_conf(self, hasfeeds):
+		global stoptimer
+		global feedstop
+
 		if hasfeeds:
-			self.menu.append(gtk.SeparatorMenuItem())
+			if feedstop == True:
+				self.menu.append(gtk.SeparatorMenuItem())
+
 			menu_open_unread = gtk.MenuItem('Open all unread')
 			menu_open_unread.connect('activate', self.open_unread, '')
 			self.menu.append(menu_open_unread)
@@ -1082,13 +1131,6 @@ class AppIndicator:
 		menu_quit = gtk.MenuItem('Quit')
 		self.menu.append(menu_quit)
 		menu_quit.connect('activate', Exit)
-		self.menu.show_all()
-		self.ind.set_menu(self.menu)
-
-		if hasunread:
-			self.set_status(True)
-		else:
-			self.set_status(False)
 
 	def create_menu_header(self, title, url):
 		"""create the menu heading for each feed"""
