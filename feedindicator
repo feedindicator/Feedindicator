@@ -1228,7 +1228,7 @@ class AppIndicator:
 			sq = SQLite()
 			sq.open(app_database)
 
-			feeds = sq.execute('select title, img, feed_url from feeds order by (select count(*) from posts where posts.feed_url=feeds.feed_url and read = \'false\') limit 50') #notification stack is limit to 50
+			feeds = sq.execute('select title, img, feed_url from feeds where feed_url in (select feed_url from posts where read = \'false\' group by feed_url limit 50) order by (select count(feed_url) as c from posts where read = \'false\' group by feed_url order by c desc limit 50), title') #notification stack is limit to 50
 
 			if len(feeds) > 0:
 				if not sound == '':
