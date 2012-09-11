@@ -1044,6 +1044,9 @@ class AppIndicator:
 
 		if hasfeeds:
 			self.menu.append(gtk.SeparatorMenuItem())
+			menu_open_unread = gtk.MenuItem('Open all unread')
+			menu_open_unread.connect('activate', self.open_unread, '')
+			self.menu.append(menu_open_unread)
 			menu_read = gtk.MenuItem('Mark all as read')
 			menu_read.connect('activate', self.feed_read, '')
 			self.menu.append(menu_read)
@@ -1108,12 +1111,24 @@ class AppIndicator:
 		sq = SQLite()
 		sq.open(app_database)
 
-		posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', (url,))
-		for post in posts:
-			webbrowser.open(post[0])
-			sleep(0.5)
+		if not url == '':
+			posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', (url,))
+			for post in posts:
+				webbrowser.open(post[0])
+				sleep(0.5)
 
-		sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
+			sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
+		else:
+			feeds = sq.execute('select feed_url from feeds')
+
+			for feed in feeds:
+				posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', feed)
+				for post in posts:
+					webbrowser.open(post[0])
+					sleep(0.5)
+
+				sq.execute('update posts set read=\'true\' where feed_url=?', feed)
+
 		sq.commit()
 		sq.close()
 
