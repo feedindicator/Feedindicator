@@ -530,6 +530,7 @@ class ConfigureDialog:
 		self.autostartset = autostart
 		self.shownotificationsset = shownotifications
 		self.usesubmenusset = usesubmenus
+		self.feedstopset = feedstop
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
 		self.window.set_size_request(850, 550)
@@ -564,7 +565,7 @@ class ConfigureDialog:
 		sq = SQLite()
 		sq.open(app_database)
 
-		feeds = sq.execute('select feed_url, title from feeds order by title')
+		feeds = sq.execute('select feed_url, title from feeds order by upper(title)')
 		for feed in feeds:
 			liststore.append([unicode(feed[0]), unicode(feed[1]), unicode(feed[0])])
 
@@ -1022,7 +1023,7 @@ class AppIndicator:
 		sq = SQLite()
 		sq.open(app_database)
 
-		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds order by c desc, title')
+		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds order by c desc, upper(title)')
 		hasfeeds = len(feeds) > 0
 
 		if feedstop == False:
@@ -1228,7 +1229,7 @@ class AppIndicator:
 			sq = SQLite()
 			sq.open(app_database)
 
-			feeds = sq.execute('select title, img, feed_url from feeds where feed_url in (select feed_url from posts where read = \'false\' group by feed_url limit 50) order by (select count(feed_url) as c from posts where read = \'false\' group by feed_url order by c desc limit 50), title') #notification stack is limit to 50
+			feeds = sq.execute('select title, img, feed_url from feeds where feed_url in (select feed_url from posts where read = \'false\' group by feed_url limit 50) order by (select count(feed_url) as c from posts where read = \'false\' group by feed_url order by c desc limit 50), upper(title)') #notification stack is limit to 50
 
 			if len(feeds) > 0:
 				if not sound == '':
