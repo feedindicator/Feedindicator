@@ -1222,7 +1222,7 @@ class AppIndicator:
 		return True
 
 	def finnished_update(self):
-		"""renders menu and shows notification after FeadThread has endet"""
+		"""renders menu and shows notification after FeadThread has ended"""
 		self.render_menu()
 
 		if shownotifications:
@@ -1252,7 +1252,7 @@ class AppIndicator:
 						else:
 							self.send_notification(feed[0], notifymsg, os.path.join(app_cache_dir, feed[1]))
 			else:
-				self.send_notification(app_name, 'Finnished updating feeds', app_logo)
+				self.send_notification(app_name, 'Finished updating feeds', app_logo)
 
 			sq.close()
 
