@@ -941,6 +941,22 @@ class AppIndicator:
 			sq.open(app_database)
 			sq.execute('CREATE TABLE feeds (feed_url TEXT PRIMARY KEY, url TEXT, title TEXT, img TEXT)')
 			sq.execute('CREATE TABLE posts (post_url TEXT PRIMARY KEY, title TEXT, read BOOLEAN DEFAULT false, feed_url TEXT NOT NULL, FOREIGN KEY(feed_url) REFERENCES feeds(feed_url))')
+
+			app_config_file = os.path.join(app_config_dir, 'feeds.cfg')
+			app_cache_file = os.path.join(app_cache_dir, 'feeds.dat')
+
+			if os.path.exists(app_config_file):
+				rssf = open(app_config_file)
+				for line in rssf:
+					line = string.replace(line, '\n', '')
+					sq.execute('insert into feeds (feed_url) values (?)', (unicode(line),))
+
+				rssf.close()
+				os.remove(app_config_file)
+
+			if os.path.exists(app_cache_file):
+				os.remove(app_cache_file)
+
 			sq.commit()
 			sq.close()
 
@@ -1102,7 +1118,7 @@ class AppIndicator:
 			menu_unread.connect('activate', self.feed_unread, '')
 			self.menu.append(menu_unread)
 			menu_update = gtk.MenuItem('Reload all feeds')
-			menu_update.connect('activate', self.update_feeds, True, True)
+			menu_update.connect('activate', self.update_feeds, True, False)
 			self.menu.append(menu_update)
 			self.menu.append(gtk.SeparatorMenuItem())
 			if refreshtime/60 == 1:
