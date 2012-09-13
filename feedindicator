@@ -364,12 +364,19 @@ class FeedThread(Thread):
 						sq.execute('update feeds set img=? where feed_url=?', (unicode(feedinfo['feeddata']['img']), feed[0]))
 
 					items = ()
+					posts = ()
 					for postdata in feedinfo['postdata']:
+						posts = posts + (postdata['link'],)
 						if not sq.contains('select * from posts where post_url=?', (postdata['link'],)):
 							items = items + ((unicode(postdata['link']), unicode(postdata['title']), unicode(feed[0])), )
 
 					if not items == ():
 						sq.executemany('insert into posts (post_url, title, feed_url) values (?,?,?)', items)
+
+					placeholder= '?'
+					placeholders= ', '.join(placeholder for unused in posts)
+					posts = posts + (feed[0],)
+					sq.execute('delete from posts where read=\'true\' and post_url not in (%s) and feed_url=?' % placeholders, posts)
 
 		sq.commit()
 		sq.close()
