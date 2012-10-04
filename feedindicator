@@ -366,17 +366,24 @@ class FeedThread(Thread):
 					items = ()
 					posts = ()
 					for postdata in feedinfo['postdata']:
-						posts = posts + (postdata['link'],)
-						if not sq.contains('select * from posts where post_url=?', (postdata['link'],)):
-							items = items + ((unicode(postdata['link']), unicode(postdata['title']), unicode(feed[0])), )
+						if not postdata['date'] == '':
+							md5 = hashlib.md5(str(postdata['date']) + '@' + str(postdata['title'])).hexdigest()
+							posts = posts + (md5,)
+							if not sq.contains('select * from posts where id=?', (md5,)):
+								items = items + ((md5, unicode(postdata['link']), unicode(postdata['title']), unicode(feed[0])), )
+						else:
+							md5 = hashlib.md5(str(postdata['link'])).hexdigest()
+							posts = posts + (md5,)
+							if not sq.contains('select * from posts where id=?', (md5,)):
+								items = items + ((md5, unicode(postdata['link']), unicode(postdata['title']), unicode(feed[0])), )
 
 					if not items == ():
-						sq.executemany('insert into posts (post_url, title, feed_url) values (?,?,?)', items)
+						sq.executemany('insert into posts (id, post_url, title, feed_url) values (?,?,?,?)', items)
 
 					placeholder= '?'
 					placeholders= ', '.join(placeholder for unused in posts)
 					posts = posts + (feed[0],)
-					sq.execute('delete from posts where read=\'true\' and post_url not in (%s) and feed_url=?' % placeholders, posts)
+					sq.execute('delete from posts where read=\'true\' and id not in (%s) and feed_url=?' % placeholders, posts)
 
 		sq.commit()
 		sq.close()
@@ -399,7 +406,16 @@ class FeedThread(Thread):
 					substr = substr.rpartition(' ')
 					if substr[0] != '':
 						val.title = substr[0] + '...'
-				v = {'title': val.title, 'link': val.link}
+
+				date = ''
+				if 'published' in val:
+					date = val.published
+				elif 'updated' in val:
+					date = val.updated
+				elif 'created' in val:
+					date = val.created
+
+				v = {'title': val.title, 'link': val.link, 'date': date}
 				postdata.append(v)
 			feedinfo['postdata'] = postdata
 			feedimg = None
@@ -947,7 +963,7 @@ class AppIndicator:
 			sq = SQLite()
 			sq.open(app_database)
 			sq.execute('CREATE TABLE feeds (feed_url TEXT PRIMARY KEY, url TEXT, title TEXT, img TEXT)')
-			sq.execute('CREATE TABLE posts (post_url TEXT PRIMARY KEY, title TEXT, read BOOLEAN DEFAULT false, feed_url TEXT NOT NULL, FOREIGN KEY(feed_url) REFERENCES feeds(feed_url))')
+			sq.execute('CREATE TABLE posts (id TEXT PRIMARY KEY, post_url TEXT, title TEXT, read BOOLEAN DEFAULT false, feed_url TEXT NOT NULL, FOREIGN KEY(feed_url) REFERENCES feeds(feed_url))')
 
 			app_config_file = os.path.join(app_config_dir, 'feeds.cfg')
 			app_cache_file = os.path.join(app_cache_dir, 'feeds.dat')
@@ -963,6 +979,17 @@ class AppIndicator:
 
 			if os.path.exists(app_cache_file):
 				os.remove(app_cache_file)
+
+			sq.commit()
+			sq.close()
+		else:
+			sq = SQLite()
+			sq.open(app_database)
+
+			posts = sq.execute('select id from posts')
+			if posts == None:
+				sq.execute('DROP TABLE posts')
+				sq.execute('CREATE TABLE posts (id TEXT PRIMARY KEY, post_url TEXT, title TEXT, read BOOLEAN DEFAULT false, feed_url TEXT NOT NULL, FOREIGN KEY(feed_url) REFERENCES feeds(feed_url))')
 
 			sq.commit()
 			sq.close()
@@ -996,13 +1023,13 @@ class AppIndicator:
 		"""open the feed's website url"""
 		webbrowser.open(url)
 
-	def menuitem_response(self, data, url):
+	def menuitem_response(self, data, post_id, url):
 		"""open the website page url"""
 		webbrowser.open(url)
 
 		sq = SQLite()
 		sq.open(app_database)
-		sq.execute('update posts set read =\'true\' where post_url =? ', (url,))
+		sq.execute('update posts set read =\'true\' where id =? ', (post_id,))
 		sq.commit()
 		sq.close()
 
@@ -1051,7 +1078,8 @@ class AppIndicator:
 
 		if feedstop == False:
 			self.render_menu_conf(hasfeeds)
-			self.menu.append(gtk.SeparatorMenuItem())
+			if hasfeeds:
+				self.menu.append(gtk.SeparatorMenuItem())
 
 		for feed in feeds:
 			if usesubmenus == True:
@@ -1069,13 +1097,13 @@ class AppIndicator:
 				submenu_read.connect('activate', self.feed_unread, feed[2])
 				submenu.append(submenu_read)
 
-				posts = sq.execute(str('select title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
+				posts = sq.execute(str('select id, title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
 				if len(posts) > 0:
 					posts.reverse()
 					submenu.append(gtk.SeparatorMenuItem())
 				
 					for post in posts:
-						menu_row = self.create_menu_item(post[0], post[1])
+						menu_row = self.create_menu_item(post[1], post[0], post[2])
 						submenu.append(menu_row)
 
 				menu_header.set_submenu(submenu)
@@ -1084,12 +1112,12 @@ class AppIndicator:
 				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), feed[1])
 				self.menu.append(menu_header)
 
-				posts = sq.execute(str('select title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
+				posts = sq.execute(str('select id, title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
 				if len(posts) > 0:
 					posts.reverse()
 
 					for post in posts:
-						menu_row = self.create_menu_item(post[0], post[1])
+						menu_row = self.create_menu_item(post[1], post[0], post[2])
 						self.menu.append(menu_row)
 
 		hasunread = sq.contains('select * from posts where read=\'false\'')
@@ -1161,13 +1189,13 @@ class AppIndicator:
 			menu_row.connect('activate', self.menuitem_response_website, url)
 		return menu_row
 
-	def create_menu_item(self, title, url):
+	def create_menu_item(self, title, post_id, url):
 		"""create the menu entries for each feed"""
 		if usesubmenus == True:
 			menu_row = gtk.MenuItem(title)
 		else:
 			menu_row = gtk.MenuItem("        " + title)
-		menu_row.connect('activate', self.menuitem_response, url)
+		menu_row.connect('activate', self.menuitem_response, post_id, url)
 		return menu_row
 
 	def open_unread(self, data, url):
@@ -1179,7 +1207,7 @@ class AppIndicator:
 			posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', (url,))
 			for post in posts:
 				webbrowser.open(post[0])
-				sleep(0.5)
+				sleep(0.6)
 
 			sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
 		else:
@@ -1189,7 +1217,7 @@ class AppIndicator:
 				posts = sq.execute('select post_url from posts where feed_url=? and read=\'false\'', feed)
 				for post in posts:
 					webbrowser.open(post[0])
-					sleep(0.5)
+					sleep(0.6)
 
 				sq.execute('update posts set read=\'true\' where feed_url=?', feed)
 
@@ -1252,7 +1280,7 @@ class AppIndicator:
 			sq = SQLite()
 			sq.open(app_database)
 
-			feeds = sq.execute('select title, img, feed_url from feeds where feed_url in (select feed_url from posts where read = \'false\' group by feed_url limit 50) order by (select count(feed_url) as c from posts where read = \'false\' group by feed_url order by c desc limit 50), upper(title)') #notification stack is limit to 50
+			feeds = sq.execute('select title, img, feed_url from feeds where feed_url in (select feed_url from posts where read = \'false\' group by feed_url limit 50) order by (select count(feed_url) as c from posts where read = \'false\' group by feed_url order by c desc limit 49), upper(title)') #notification stack is limit to 50
 
 			if len(feeds) > 0:
 				if not sound == '':
@@ -1261,13 +1289,10 @@ class AppIndicator:
 				for feed in feeds:
 					count = 0
 					notifymsg = ''
-					posts = sq.execute('select title from posts where read = \'false\' and feed_url=?', (feed[2],))
+					posts = sq.execute('select title from posts where read = \'false\' and feed_url=? limit 3', (feed[2],))
 
 					if len(posts) > 0:
 						for post in posts:
-							count += 1
-							if count > 3:
-								break
 							notifymsg += '\n' + unicode(post[0])
 
 						if feed[1] == None:
