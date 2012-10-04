@@ -13,12 +13,13 @@ sudo xdg-icon-resource install --theme hicolor --novendor --size 48 --context ap
 sudo xdg-desktop-menu install --novendor feedindicator.desktop
 
 if [ ! -d /usr/share/feedindicator/ ]
-then
-sudo mkdir /usr/share/feedindicator
+	then
+		sudo mkdir /usr/share/feedindicator
 fi
 
 sudo cp feedindicator-icon.png /usr/share/feedindicator/feedindicator-icon.png
 sudo cp feedindicator-logo.png /usr/share/feedindicator/feedindicator-logo.png
+sudo cp -r languages/ /usr/share/feedindicator/
 
 sudo cp feedindicator /usr/bin/feedindicator
 sudo chmod +x /usr/bin/feedindicator
