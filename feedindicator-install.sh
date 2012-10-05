@@ -1,6 +1,6 @@
 #!/bin/sh
 
-sudo apt-get install python-feedparser
+sudo apt-get install python-feedparser python-configobj
 sudo xdg-icon-resource install --theme ubuntu-mono-dark --novendor --size 22 dark/indicator-feedindicator.png indicator-feedindicator
 sudo xdg-icon-resource install --theme ubuntu-mono-dark --novendor --size 22 dark/indicator-feedindicator-attention.png indicator-feedindicator-attention
 sudo xdg-icon-resource install --theme ubuntu-mono-light --novendor --size 22 light/indicator-feedindicator.png indicator-feedindicator
