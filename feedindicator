@@ -76,7 +76,7 @@ app_logo = os.path.join(app_share_dir, 'feedindicator-logo.png')
 app_language_dir = os.path.join(app_share_dir, 'languages/')
 
 # database
-app_database = os.path.join(app_config_dir, 'feedindicator.test.db')
+app_database = os.path.join(app_config_dir, 'feedindicator.db')
 
 # language properties file
 app_language_file = os.path.join(app_config_dir, 'language.properties')
