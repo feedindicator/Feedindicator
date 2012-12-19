@@ -717,7 +717,7 @@ class ConfigureDialog:
 		check_feedstop.connect('toggled', self.feedstop_toggle)
 		check_feedstop.show()
 
-		check_unreadfeeds = gtk.CheckButton('Display Feeds with no unread posts')#language_properties['feeds_top_menu'])
+		check_unreadfeeds = gtk.CheckButton(language_properties['unread_feeds_menu'])
 		hbox2t.pack_start(check_unreadfeeds, True, True, 0)
 		if unreadfeeds == True:
 			check_unreadfeeds.set_active(True)
