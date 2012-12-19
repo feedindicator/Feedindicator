@@ -76,7 +76,7 @@ app_logo = os.path.join(app_share_dir, 'feedindicator-logo.png')
 app_language_dir = os.path.join(app_share_dir, 'languages/')
 
 # database
-app_database = os.path.join(app_config_dir, 'feedindicator.db')
+app_database = os.path.join(app_config_dir, 'feedindicator.test.db')
 
 # language properties file
 app_language_file = os.path.join(app_config_dir, 'language.properties')
@@ -132,6 +132,9 @@ sound = "/usr/bin/mplayer -ao alsa /usr/share/sounds/ubuntu/stereo/message.ogg"
 
 # default position of the feeds top or button of the menu
 feedstop = True
+
+# default shows feeds with no unread posts
+unreadfeeds = True
 
 # language properties
 language_properties = None
@@ -522,7 +525,7 @@ class AddFeedDialog:
 		sq.close()
 		self.window.destroy()
 
-		indicator.update_feeds(None, True, True)
+		indicator.update_feeds(None, True, False)
 
 	def keypress(self, widget, data):
 		"""keypress handler"""
@@ -567,6 +570,7 @@ class ConfigureDialog:
 		self.shownotificationsupdateset = shownotificationsupdate
 		self.usesubmenusset = usesubmenus
 		self.feedstopset = feedstop
+		self.unreadfeedsset = unreadfeeds
 		self.langaugeset = ''
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
@@ -712,6 +716,13 @@ class ConfigureDialog:
 			check_feedstop.set_active(True)
 		check_feedstop.connect('toggled', self.feedstop_toggle)
 		check_feedstop.show()
+
+		check_unreadfeeds = gtk.CheckButton('Display Feeds with no unread posts')#language_properties['feeds_top_menu'])
+		hbox2t.pack_start(check_unreadfeeds, True, True, 0)
+		if unreadfeeds == True:
+			check_unreadfeeds.set_active(True)
+		check_unreadfeeds.connect('toggled', self.unreadfeeds_toggle)
+		check_unreadfeeds.show()
 
 		hbox2tb = gtk.HBox(False, 0)
 		vbox.pack_start(hbox2tb, False, True, 0)
@@ -902,6 +913,13 @@ class ConfigureDialog:
 		else:
 			self.feedstopset = False
 
+	def unreadfeeds_toggle(self, widget):
+		"""check toggle status"""
+		if widget.get_active():
+			self.unreadfeedsset = True
+		else:
+			self.unreadfeedsset = False
+
 	def autostart_create(self):
 		"""create autostart file"""
 		global autostart
@@ -939,6 +957,7 @@ class ConfigureDialog:
 		global usesubmenus
 		global sound
 		global feedstop
+		global unreadfeeds
 		global language_properties
 
 		refreshtime = self.refreshtimeset
@@ -953,6 +972,8 @@ class ConfigureDialog:
 		gconf['usesubmenus'] = self.usesubmenusset
 		feedstop = self.feedstopset
 		gconf['feedstop'] = self.feedstopset
+		unreadfeeds = self.unreadfeedsset
+		gconf['unreadfeeds'] = self.unreadfeedsset
 		sound = self._textbox.get_text()
 		gconf['sound'] = self._textbox.get_text()
 		autostart = self.autostartset
@@ -999,8 +1020,9 @@ class AppIndicator:
 		global shownotifications
 		global shownotificationsupdate
 		global usesubmenus
-		global sound
 		global feedstop
+		global unreadfeeds
+		global sound
 
 		if gconf['refreshtime'] is not None:
 			refreshtime = gconf['refreshtime'];
@@ -1036,6 +1058,11 @@ class AppIndicator:
 			feedstop = gconf['feedstop'];
 		else:
 			gconf['feedstop'] = feedstop;
+
+		if gconf['unreadfeeds'] is not None:
+			unreadfeeds = gconf['unreadfeeds'];
+		else:
+			gconf['unreadfeeds'] = unreadfeeds;
 
 		if gconf['sound'] is not None:
 			sound = gconf['sound'];
@@ -1152,6 +1179,7 @@ class AppIndicator:
 		"""populate the menu"""
 		global stoptimer
 		global feedstop
+		global unreadfeeds
 
 		for child in self.menu.get_children():
 			child.destroy()
@@ -1159,13 +1187,24 @@ class AppIndicator:
 		sq = SQLite()
 		sq.open(app_database)
 
-		feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds order by c desc, upper(title)')
-		hasfeeds = len(feeds) > 0
+		if unreadfeeds:
+			feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds order by c desc, upper(title)')
+		else:
+			feeds = sq.execute('select title, url, feed_url, (select count(*) from posts where posts.feed_url=feeds.feed_url and read=\'false\') as c from feeds where c > 0 order by c desc, upper(title)')
+		empty = len(feeds) > 0
+		hasfeeds = len(sq.execute('select count(*) from feeds')) > 0
 
 		if feedstop == False:
 			self.render_menu_conf(hasfeeds)
 			if hasfeeds:
 				self.menu.append(gtk.SeparatorMenuItem())
+
+		if not empty:
+			no_unread = gtk.MenuItem('No unread feeds.')
+			self.menu.append(no_unread)
+			no_unread.set_sensitive(False)
+
+
 
 		for feed in feeds:
 			if usesubmenus == True:
