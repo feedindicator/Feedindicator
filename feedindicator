@@ -1218,6 +1218,9 @@ class AppIndicator:
 				submenu_read = gtk.MenuItem(language_properties['mark_as_read'])
 				submenu_read.connect('activate', self.feed_read, feed[2])
 				submenu.append(submenu_read)
+				submenu_read2 = gtk.MenuItem(language_properties['mark_displayed_as_read'])
+				submenu_read2.connect('activate', self.feed_read_displayed, feed[2])
+				submenu.append(submenu_read2)
 				submenu_read = gtk.MenuItem(language_properties['mark_as_unread'])
 				submenu_read.connect('activate', self.feed_unread, feed[2])
 				submenu.append(submenu_read)
@@ -1353,13 +1356,24 @@ class AppIndicator:
 		self.render_menu()
 
 	def feed_read(self, data, url):
-		"""marks all posts of all feeds or a specific feed as unread"""
+		"""marks all posts of all feeds or a specific feed as read"""
 		sq = SQLite()
 		sq.open(app_database)
 		if url == '':
 			sq.execute('update posts set read=\'true\'')
 		else:
 			sq.execute('update posts set read=\'true\' where feed_url=?', (url,))
+		sq.commit()
+		sq.close()
+
+		sleep(0.5)
+		self.render_menu()
+
+	def feed_read_displayed(self, data, url):
+		"""marks displayed posts of given feed as read"""
+		sq = SQLite()
+		sq.open(app_database)
+		sq.execute(str('update posts set read=\'true\' where feed_url=? and id in (select id from posts where feed_url=? and read == \'false\' limit %i)' % itemsperfeed), (url,url))
 		sq.commit()
 		sq.close()
 
