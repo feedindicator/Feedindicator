@@ -574,25 +574,36 @@ class ConfigureDialog:
 		self.langaugeset = ''
 
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-		self.window.set_size_request(850, 550)
+		self.window.set_size_request(900, 550)
+		self.window.set_border_width(10)
 		self.window.set_position(gtk.WIN_POS_CENTER)
 		self.window.set_title(language_properties['configure'] + ' ' + app_name)
-		self.window.connect('delete_event',self.cancel_dialog)
+		self.window.connect('delete_event', self.cancel_dialog)
 		self.window.connect('key-press-event', self.keypress)
+
+		table = gtk.Table(3,6,False)
+		self.window.add(table)
+
+		notebook = gtk.Notebook()
+		notebook.set_tab_pos(gtk.POS_LEFT)
+		table.attach(notebook, 0,6,0,1)
+		notebook.show()
+
+		#Feed List
+		frame_feed_list = gtk.Frame(language_properties['feed_list'])
+		frame_feed_list.set_border_width(10)
+		frame_feed_list.set_size_request(800, 500)
+		frame_feed_list.show()
 
 		vbox = gtk.VBox(False, 10)
 		vbox.set_border_width(10)
-		self.window.add(vbox)
+		frame_feed_list.add(vbox)
 		vbox.show()
-
-		hboxl = gtk.HBox(False, 0)
-		vbox.pack_start(hboxl, False, True, 0)
-		hboxl.show()
 
 		label = gtk.Label(language_properties['configure_dialog_label'])
 		label.set_justify(gtk.JUSTIFY_LEFT)
 		label.set_line_wrap(True)
-		hboxl.pack_start(label, False, True, 0)
+		vbox.pack_start(label, False, True, 0)
 		label.show()
 
 		scrolled_window = gtk.ScrolledWindow()
@@ -608,25 +619,24 @@ class ConfigureDialog:
 
 		feeds = sq.execute('select feed_url, title from feeds order by upper(title)')
 		for feed in feeds:
-			liststore.append([unicode(feed[0]), unicode(feed[1]), unicode(feed[0])])
+			liststore.append([unicode(feed[1]), unicode(feed[0]), unicode(feed[0])])
 
 		sq.close()
 
 		self.treeview = gtk.TreeView(liststore)
-
-		self.urlcolumn = gtk.TreeViewColumn(language_properties['column_url'])
-		self.treeview.append_column(self.urlcolumn)
-		textrenderer = gtk.CellRendererText()
-		self.urlcolumn.pack_start(textrenderer, True)
-		self.urlcolumn.add_attribute(textrenderer, 'text', 0)
-		textrenderer.set_property('editable', True)
-		textrenderer.connect('edited', self.cell_edited, liststore, 0)
-
 		textrenderer = gtk.CellRendererText()
 		self.titlecolumn = gtk.TreeViewColumn(language_properties['column_title'])
 		self.treeview.append_column(self.titlecolumn)
 		self.titlecolumn.pack_start(textrenderer, True)
-		self.titlecolumn.add_attribute(textrenderer, 'text', 1)
+		self.titlecolumn.add_attribute(textrenderer, 'text', 0)
+		textrenderer.set_property('editable', True)
+		textrenderer.connect('edited', self.cell_edited, liststore, 0)
+
+		textrenderer = gtk.CellRendererText()
+		self.urlcolumn = gtk.TreeViewColumn(language_properties['column_url'])
+		self.treeview.append_column(self.urlcolumn)
+		self.urlcolumn.pack_start(textrenderer, True)
+		self.urlcolumn.add_attribute(textrenderer, 'text', 1)
 		textrenderer.set_property('editable', True)
 		textrenderer.connect('edited', self.cell_edited, liststore, 1)
 
@@ -649,6 +659,20 @@ class ConfigureDialog:
 		self.button_remove.connect_object('clicked', self.button_remove_clicked, liststore)
 		self.button_remove.set_sensitive(False)
 		self.button_remove.show()
+
+		notebook.append_page(frame_feed_list, gtk.Label(language_properties['feed_list']))
+
+
+		#Feed Options
+		frame_feed_options = gtk.Frame(language_properties['feed_options'])
+		frame_feed_options.set_border_width(10)
+		frame_feed_options.set_size_request(800, 500)
+		frame_feed_options.show()
+
+		vbox = gtk.VBox(False, 10)
+		vbox.set_border_width(10)
+		frame_feed_options.add(vbox)
+		vbox.show()
 
 		hbox2sl = gtk.HBox(False, 0)
 		vbox.pack_start(hbox2sl, False, True, 0)
@@ -692,54 +716,60 @@ class ConfigureDialog:
 		self.items_scale(adjitems)
 		scaleitems.show()
 
-		hbox2t = gtk.HBox(False, 0)
-		vbox.pack_start(hbox2t, False, True, 0)
-		hbox2t.show()
-
-		check_autostart = gtk.CheckButton(language_properties['run_startup'])
-		hbox2t.pack_start(check_autostart, True, True, 0)
-		if autostart == True:
-			check_autostart.set_active(True)
-		check_autostart.connect('toggled', self.autostart_toggle)
-		check_autostart.show()
-
 		check_usesubmenus = gtk.CheckButton(language_properties['submenu_feed'])
-		hbox2t.pack_start(check_usesubmenus, True, True, 0)
-		if usesubmenus == True:
+		vbox.pack_start(check_usesubmenus, False, True, 0)
+		if usesubmenus:
 			check_usesubmenus.set_active(True)
 		check_usesubmenus.connect('toggled', self.usesubmenus_toggle)
 		check_usesubmenus.show()
 
 		check_feedstop = gtk.CheckButton(language_properties['feeds_top_menu'])
-		hbox2t.pack_start(check_feedstop, True, True, 0)
-		if feedstop == True:
+		vbox.pack_start(check_feedstop, False, True, 0)
+		if feedstop:
 			check_feedstop.set_active(True)
 		check_feedstop.connect('toggled', self.feedstop_toggle)
 		check_feedstop.show()
 
 		check_unreadfeeds = gtk.CheckButton(language_properties['unread_feeds_menu'])
-		hbox2t.pack_start(check_unreadfeeds, True, True, 0)
-		if unreadfeeds == True:
+		vbox.pack_start(check_unreadfeeds, False, True, 0)
+		if unreadfeeds:
 			check_unreadfeeds.set_active(True)
 		check_unreadfeeds.connect('toggled', self.unreadfeeds_toggle)
 		check_unreadfeeds.show()
 
-		hbox2tb = gtk.HBox(False, 0)
-		vbox.pack_start(hbox2tb, False, True, 0)
-		hbox2tb.show()
+		notebook.append_page(frame_feed_options, gtk.Label(language_properties['feed_options']))
+
+
+		#Global Options
+		frame_feed_options = gtk.Frame(language_properties['global_options'])
+		frame_feed_options.set_border_width(10)
+		frame_feed_options.set_size_request(800, 500)
+		frame_feed_options.show()
+
+		vbox = gtk.VBox(False, 10)
+		vbox.set_border_width(10)
+		frame_feed_options.add(vbox)
+		vbox.show()
+
+		check_autostart = gtk.CheckButton(language_properties['run_startup'])
+		vbox.pack_start(check_autostart, False, True, 0)
+		if autostart:
+			check_autostart.set_active(True)
+		check_autostart.connect('toggled', self.autostart_toggle)
+		check_autostart.show()
 
 		check_shownotifications = gtk.CheckButton(language_properties['show_notifications'])
-		hbox2tb.pack_start(check_shownotifications, True, True, 0)
-		if shownotifications == True:
+		vbox.pack_start(check_shownotifications, False, True, 0)
+		if shownotifications:
 			check_shownotifications.set_active(True)
 		check_shownotifications.connect('toggled', self.shownotifications_toggle)
 		check_shownotifications.show()
 
 		self.check_shownotificationsupdate = gtk.CheckButton(language_properties['show_notifications_update'])
-		hbox2tb.pack_start(self.check_shownotificationsupdate, True, True, 0)
-		if shownotifications == False:
+		vbox.pack_start(self.check_shownotificationsupdate, False, True, 0)
+		if not shownotifications:
 			self.check_shownotificationsupdate.set_sensitive(False)
-		if shownotificationsupdate == True:
+		if shownotificationsupdate:
 			self.check_shownotificationsupdate.set_active(True)
 		self.check_shownotificationsupdate.connect('toggled', self.shownotificationsupdate_toggle)
 		self.check_shownotificationsupdate.show()
@@ -750,6 +780,7 @@ class ConfigureDialog:
 
 		entrylabel = gtk.Label(language_properties['signal_command'])
 		hbox3l.pack_start(entrylabel, False, False, 0)
+		entrylabel.set_line_wrap(True)
 		entrylabel.show()
 
 		hbox3 = gtk.HBox(True, 0)
@@ -789,23 +820,23 @@ class ConfigureDialog:
 		hbox4.pack_start(combobox_language, True, True, 0)
 		combobox_language.show()
 
-		hbox5 = gtk.HBox(True, 0)
-		vbox.pack_end(hbox5, False, True, 5)
-		hbox5.show()
+		notebook.append_page(frame_feed_options, gtk.Label(language_properties['global_options']))
 
+		table.attach(gtk.Label(''), 0,1,1,2)
 		button_about = gtk.Button(language_properties['about'])
-		hbox5.pack_start(button_about, True, True, 0)
+		table.attach(button_about, 3,4,1,2)
 		button_about.connect_object('clicked', AboutDialog, button_about)
 		button_about.show()
 		button_cancel = gtk.Button(language_properties['cancel'])
-		hbox5.pack_start(button_cancel, True, True, 0)
+		table.attach(button_cancel, 4,5,1,2)
 		button_cancel.connect_object('clicked', self.cancel_dialog, button_cancel)
 		button_cancel.show()
 		button_save = gtk.Button(language_properties['save'])
-		hbox5.pack_start(button_save, True, True, 0)
-		button_save.connect_object('clicked', self.save_dialog, liststore)
+		button_save.connect('clicked', self.save_dialog, liststore)
+		table.attach(button_save, 5,6,1,2)
 		button_save.show()
 
+		table.show()
 		self.window.set_keep_above(True)
 		self.window.show()
 
@@ -947,7 +978,7 @@ class ConfigureDialog:
 		"""cancel dialog"""
 		self.window.destroy()
 
-	def save_dialog(self, data):
+	def save_dialog(self, widget, data):
 		"""save list to config file and close config dialog"""
 		global refreshtime
 		global itemsperfeed
@@ -990,15 +1021,15 @@ class ConfigureDialog:
 		sq.open(app_database)
 
 		for row in data:
-			if row[2] == '' and row[1] == '':
-				sq.execute('insert into feeds (feed_url) values (?)', (unicode(row[0]),))
-			elif row[2] == '' and row[1] != '':
-				sq.execute('insert into feeds (feed_url, title) values (?, ?)', (unicode(row[0]), unicode(row[1])))
-			elif row[2] == row[0]:
-				sq.execute('update feeds set title=? where feed_url=?', (unicode(row[1]), unicode(row[2])))
+			if row[2] == '' and row[0] == '':
+				sq.execute('insert into feeds (feed_url) values (?)', (unicode(row[1]),))
+			elif row[2] == '' and row[0] != '':
+				sq.execute('insert into feeds (feed_url, title) values (?, ?)', (unicode(row[1]), unicode(row[0])))
+			elif row[2] == row[1]:
+				sq.execute('update feeds set title=? where feed_url=?', (unicode(row[0]), unicode(row[2])))
 			else:
-				sq.execute('update posts set feed_url=? where feed_url=?', (unicode(row[0]), unicode(row[2])))
-				sq.execute('update feeds set title=?, feed_url=? where feed_url=?', (unicode(row[1]), unicode(row[0]), unicode(row[2])))
+				sq.execute('update posts set feed_url=? where feed_url=?', (unicode(row[1]), unicode(row[2])))
+				sq.execute('update feeds set title=?, feed_url=? where feed_url=?', (unicode(row[0]), unicode(row[1]), unicode(row[2])))
 
 		sq.commit()
 		sq.close()
