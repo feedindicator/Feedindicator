@@ -436,7 +436,10 @@ class FeedThread(Thread):
 			feedimg = None
 			webimg = None
 			if 'image' in rssfeed.feed:
-				webimg = rssfeed.feed.image.href if rssfeed.feed.image.href != None else rssfeed.feed.image.url
+				if 'href' in rssfeed.feed.image:
+					webimg = rssfeed.feed.image.href
+				elif 'url' in rssfeed.feed.image:
+					webimg = rssfeed.feed.image.url
 			elif 'logo' in rssfeed.feed:
 				webimg = rssfeed.feed.logo
 			elif 'icon' in rssfeed.feed:
