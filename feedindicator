@@ -1241,6 +1241,7 @@ class AppIndicator:
 
 
 		for feed in feeds:
+			posts = sq.execute(str('select id, title, post_url from posts where feed_url=? and read == \'false\' order by id limit %i' % itemsperfeed), (feed[2],))
 			if usesubmenus == True:
 				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), '')
 				menu_row = self.create_menu_header(language_properties['open_website'], feed[1])
@@ -1249,17 +1250,25 @@ class AppIndicator:
 				submenu_open_unread = gtk.MenuItem(language_properties['open_all_unread'])
 				submenu_open_unread.connect('activate', self.open_unread, feed[2])
 				submenu.append(submenu_open_unread)
+
+				if int(feed[3]) > itemsperfeed:
+					submenu_open2 = gtk.MenuItem(language_properties['open_displayed'])
+					submenu_open2.connect('activate', self.feed_open_displayed, feed[2])
+					submenu.append(submenu_open2)
+
 				submenu_read = gtk.MenuItem(language_properties['mark_as_read'])
 				submenu_read.connect('activate', self.feed_read, feed[2])
 				submenu.append(submenu_read)
-				submenu_read2 = gtk.MenuItem(language_properties['mark_displayed_as_read'])
-				submenu_read2.connect('activate', self.feed_read_displayed, feed[2])
-				submenu.append(submenu_read2)
+
+				if int(feed[3]) > itemsperfeed:
+					submenu_read2 = gtk.MenuItem(language_properties['mark_displayed_as_read'])
+					submenu_read2.connect('activate', self.feed_read_displayed, feed[2])
+					submenu.append(submenu_read2)
+
 				submenu_read = gtk.MenuItem(language_properties['mark_as_unread'])
 				submenu_read.connect('activate', self.feed_unread, feed[2])
 				submenu.append(submenu_read)
 
-				posts = sq.execute(str('select id, title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
 				if len(posts) > 0:
 					posts.reverse()
 					submenu.append(gtk.SeparatorMenuItem())
@@ -1274,7 +1283,6 @@ class AppIndicator:
 				menu_header = self.create_menu_header(('(' + unicode(feed[3]) + ') ' if not feed[3] == 0 else '') + unicode(feed[0]), feed[1])
 				self.menu.append(menu_header)
 
-				posts = sq.execute(str('select id, title, post_url from posts where feed_url=? and read == \'false\' limit %i' % itemsperfeed), (feed[2],))
 				if len(posts) > 0:
 					posts.reverse()
 
@@ -1389,6 +1397,23 @@ class AppIndicator:
 		sleep(0.5)
 		self.render_menu()
 
+	def feed_open_displayed(self, data, url):
+		"""opens all unread post of the given feed"""
+		sq = SQLite()
+		sq.open(app_database)
+
+		posts = sq.execute(str('select post_url from posts where feed_url=? and read=\'false\' order by id limit %i' % itemsperfeed), (url,))
+		for post in posts:
+			webbrowser.open(post[0])
+			sleep(0.6)
+
+		sq.execute(str('update posts set read=\'true\' where feed_url=? order by id limit %i' % itemsperfeed), (url,))
+		sq.commit()
+		sq.close()
+
+		sleep(0.5)
+		self.render_menu()
+
 	def feed_read(self, data, url):
 		"""marks all posts of all feeds or a specific feed as read"""
 		sq = SQLite()
@@ -1407,7 +1432,7 @@ class AppIndicator:
 		"""marks displayed posts of given feed as read"""
 		sq = SQLite()
 		sq.open(app_database)
-		sq.execute(str('update posts set read=\'true\' where feed_url=? and id in (select id from posts where feed_url=? and read == \'false\' limit %i)' % itemsperfeed), (url,url))
+		sq.execute(str('update posts set read=\'true\' where feed_url=? and id in (select id from posts where feed_url=? and read == \'false\' order by id limit %i)' % itemsperfeed), (url,url))
 		sq.commit()
 		sq.close()
 
