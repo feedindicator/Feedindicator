@@ -470,7 +470,7 @@ class AddFeedDialog:
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
 		self.window.set_size_request(450, 120)
 		self.window.set_position(gtk.WIN_POS_CENTER)
-		self.window.set_title(language_properties['add_feed'] + ' ' + app_name)
+		self.window.set_title(language_properties['add_feed'] + ' | ' + app_name)
 		self.window.connect('delete_event', self.cancel_dialog)
 		self.window.connect('key-press-event', self.keypress)
 
@@ -580,7 +580,7 @@ class ConfigureDialog:
 		self.window.set_size_request(900, 550)
 		self.window.set_border_width(10)
 		self.window.set_position(gtk.WIN_POS_CENTER)
-		self.window.set_title(language_properties['configure'] + ' ' + app_name)
+		self.window.set_title(str(language_properties['configure'] % app_name))
 		self.window.connect('delete_event', self.cancel_dialog)
 		self.window.connect('key-press-event', self.keypress)
 
@@ -681,7 +681,7 @@ class ConfigureDialog:
 		vbox.pack_start(hbox2sl, False, True, 0)
 		hbox2sl.show()
 
-		self.scaletimerlabel = gtk.Label(language_properties['update_feed_every'] + '...')
+		self.scaletimerlabel = gtk.Label('')
 		hbox2sl.pack_start(self.scaletimerlabel, False, False, 0)
 		self.scaletimerlabel.show()
 
@@ -702,7 +702,7 @@ class ConfigureDialog:
 		vbox.pack_start(hbox2il, False, True, 0)
 		hbox2il.show()
 
-		self.scaleitemslabel = gtk.Label(language_properties['label_items_per_feed'])
+		self.scaleitemslabel = gtk.Label('')
 		hbox2il.pack_start(self.scaleitemslabel, False, False, 0)
 		self.scaleitemslabel.show()
 
@@ -891,7 +891,7 @@ class ConfigureDialog:
 			self.scaletimerlabel.set_text(language_properties['update_feed_every_m'])
 		else:
 			self.refreshtimeset = int(value)*60
-			self.scaletimerlabel.set_text(language_properties['update_feed_every'] + ' ' + str(self.refreshtimeset/60) + ' ' + language_properties['minutes'])
+			self.scaletimerlabel.set_text(str(language_properties['update_feed_every'] % str(self.refreshtimeset/60)))
 
 	def items_scale(self, widget):
 		"""scaleitems slider interaction"""
@@ -901,7 +901,7 @@ class ConfigureDialog:
 			self.scaleitemslabel.set_text(language_properties['menu_shows_one_item_per_feed'])
 		else:
 			self.itemsperfeedset = int(value)
-			self.scaleitemslabel.set_text(language_properties['menu_shows'] + ' ' + str(self.itemsperfeedset) + ' ' + language_properties['items_per_feed'])
+			self.scaleitemslabel.set_text(str(language_properties['menu_shows'] % str(self.itemsperfeedset)))
 
 	def autostart_toggle(self, widget):
 		"""check toggle status"""
@@ -1190,7 +1190,7 @@ class AppIndicator:
 			stoptimer = False
 			gconf['stoptimer'] = False
 			if shownotifications:
-				self.send_notification(app_name + ' - ' + language_properties['started'], language_properties['feed_update_time_notification'] + ' ' + str(refreshtime/60) + ' ' + language_properties['minutes'], app_logo)
+				self.send_notification(app_name + ' - ' + language_properties['started'], str(language_properties['feed_update_time_notification'] % str(refreshtime/60)), app_logo)
 			self.update_feeds(None, True, True)
 		else:
 			stoptimer = True
@@ -1329,7 +1329,7 @@ class AppIndicator:
 			if refreshtime/60 == 1:
 				menu_updatecheck = gtk.CheckMenuItem(language_properties['update_feed_every_m'])
 			else:
-				menu_updatecheck = gtk.CheckMenuItem(language_properties['update_feed_every'] + ' ' + str(refreshtime/60) + ' ' + language_properties['minutes'])
+				menu_updatecheck = gtk.CheckMenuItem(str(language_properties['update_feed_every'] % str(refreshtime/60)))
 			if stoptimer == True:
 				menu_updatecheck.set_active(False)
 			else:
@@ -1345,7 +1345,7 @@ class AppIndicator:
 		menu_add = gtk.MenuItem(language_properties['add_feed'])
 		self.menu.append(menu_add)
 		menu_add.connect('activate', AddFeedDialog)
-		menu_configure = gtk.MenuItem(language_properties['configure'] + ' ' + app_name)
+		menu_configure = gtk.MenuItem(str(language_properties['configure'] % app_name))
 		self.menu.append(menu_configure)
 		menu_configure.connect('activate', ConfigureDialog)
 		menu_quit = gtk.MenuItem(language_properties['quit'])
