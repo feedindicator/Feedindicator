@@ -1407,7 +1407,7 @@ class AppIndicator:
 			webbrowser.open(post[0])
 			sleep(0.6)
 
-		sq.execute(str('update posts set read=\'true\' where feed_url=? order by id limit %i' % itemsperfeed), (url,))
+		sq.execute(str('update posts set read=\'true\' where id IN (select id from posts where feed_url=? and read=\'false\' order by id limit %i)' % itemsperfeed), (url,))
 		sq.commit()
 		sq.close()
 
