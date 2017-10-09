@@ -1,0 +1,221 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: feedindicator\n"
+"POT-Creation-Date: 2017-10-04 22:55+0200\n"
+"PO-Revision-Date: 2017-10-04 22:55+0200\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: de_DE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.8.7.1\n"
+"X-Poedit-Basepath: ../../..\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-SearchPath-0: .\n"
+
+#: dialogs/about.py:40 indicator.py:383
+msgid "About"
+msgstr "Über"
+
+#: dialogs/add_feed.py:50 dialogs/add_feed.py:85 indicator.py:364
+msgid "Add feed"
+msgstr "Feed hinzufügen"
+
+#: dialogs/add_feed.py:67
+msgid "Feed url"
+msgstr "Feed url"
+
+#: dialogs/add_feed.py:82 dialogs/preferences.py:218
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#: dialogs/add_feed.py:128 feedindicator.py:42
+msgid "Could not add feed."
+msgstr "Feed konnte nicht hinzugefügt werden."
+
+#: dialogs/preferences.py:61 indicator.py:378
+msgid "Preferences"
+msgstr "Einstellungen"
+
+#: dialogs/preferences.py:82 dialogs/preferences.py:133
+msgid "Feed list"
+msgstr "Feedliste"
+
+#: dialogs/preferences.py:89
+msgid "Configure the feeds."
+msgstr "Feeds konfigurieren."
+
+#: dialogs/preferences.py:109
+msgid "ID"
+msgstr "ID"
+
+#: dialogs/preferences.py:109
+msgid "Title"
+msgstr "Titel"
+
+#: dialogs/preferences.py:109
+msgid "URL"
+msgstr "URL"
+
+#: dialogs/preferences.py:125
+msgid "Add"
+msgstr "Hinzufügen"
+
+#: dialogs/preferences.py:129
+msgid "Remove"
+msgstr "Entfernen"
+
+#: dialogs/preferences.py:136 dialogs/preferences.py:213
+msgid "Options"
+msgstr "Optionen"
+
+#: dialogs/preferences.py:143
+msgid "Auto update feeds"
+msgstr "Auto aktualisiere feeds"
+
+#: dialogs/preferences.py:181
+msgid "Show feeds at top of menu"
+msgstr "Zeige Feeds an oberster Stelle im Menü"
+
+#: dialogs/preferences.py:186
+msgid "Show feeds with no unread posts"
+msgstr "Zeige Feeds mit keinen ungelesenen Posts"
+
+#: dialogs/preferences.py:191
+msgid "Launch at system startup"
+msgstr "Bei Systemstart starten"
+
+#: dialogs/preferences.py:196
+msgid "Show notifications"
+msgstr "Zeige Benachrichtigungen"
+
+#: dialogs/preferences.py:202
+msgid "Show notifications at beginning and end of update"
+msgstr "Zeige Benachrichtigungen am Anfang und Ende der Aktualisierung"
+
+#: dialogs/preferences.py:222
+msgid "Save"
+msgstr "Speichern"
+
+#: dialogs/preferences.py:320 indicator.py:498
+#, python-format
+msgid "Update feeds every minute"
+msgid_plural "Update feeds every %(minutes)d minutes"
+msgstr[0] "Feeds jede Minute aktualiesierenq"
+msgstr[1] "Feeds alle %(minutes)d Minuten aktualiesiren"
+
+#: dialogs/preferences.py:333
+#, python-format
+msgid "Show 1 item per feed"
+msgid_plural "Show %(items)d items per feed"
+msgstr[0] "Zeige ein Eintrag pro Feed"
+msgstr[1] "Zeige %(items)d Einträge pro Feed"
+
+#: feedindicator.py:48
+#, python-format
+msgid "Feeds updated. New posts: %(nr)d"
+msgstr "Feeds aktualisiert. Neue Posts: %(nr)d"
+
+#: feedindicator.py:50
+msgid "Error while updating feeds."
+msgstr "Es ist ein Fehler während der Aktualisierung der Feeds aufgetreten."
+
+#: feedindicator.py:94
+msgid "Could not init database."
+msgstr "Die Datenbank konnte nicht erstellt werden."
+
+#: feeds.py:46
+msgid "Feed added."
+msgstr "Feed hinzugefügt."
+
+#: indicator.py:71
+msgid "New Posts."
+msgstr "Neue Posts."
+
+#: indicator.py:73
+msgid "Nothing new."
+msgstr "Nichts neues."
+
+#: indicator.py:188
+msgid "Begin updating Feeds."
+msgstr "Starte Aktualisierung der Feeds."
+
+#: indicator.py:223
+msgid "Finished updating feeds."
+msgstr "Aktualisierung der Feeds beendet."
+
+#: indicator.py:234
+msgid "Loading"
+msgstr "Laden"
+
+#: indicator.py:271
+msgid "No unread posts."
+msgstr "Keine ungelesenen Posts."
+
+#: indicator.py:275
+msgid "No feeds defined!"
+msgstr "Keine Feeds vorhanden!"
+
+#: indicator.py:291
+msgid "Open all unread"
+msgstr "Alle ungelesenen öffnen"
+
+#: indicator.py:295
+msgid "Mark all as read"
+msgstr "Alle als gelesen makieren"
+
+#: indicator.py:299
+msgid "Mark all as unread"
+msgstr "Alle als ungelesen makieren"
+
+#: indicator.py:303
+msgid "Reload all feeds"
+msgstr "Alle Feeds neuladen"
+
+#: indicator.py:319
+msgid "Open Website"
+msgstr "Webseite öffnen"
+
+#: indicator.py:323
+msgid "Open unread"
+msgstr "Ungelesene öffnen"
+
+#: indicator.py:328
+msgid "Open displayed posts"
+msgstr "Öffne angezeigte Posts."
+
+#: indicator.py:332
+msgid "Mark as read"
+msgstr "Als gelesen makieren"
+
+#: indicator.py:337
+msgid "Mark displayed posts as read"
+msgstr "Alle angezeigten Posts als gelesen makieren"
+
+#: indicator.py:341
+msgid "Mark as unread"
+msgstr "Als ungelesen makieren"
+
+#: indicator.py:386
+msgid "Exit"
+msgstr "Beenden"
+
+#: indicator.py:493
+msgid "Feeds will not update automatically."
+msgstr "Feeds werden nicht automatisch aktualisiert."
+
+#: utils/db.py:33
+msgid "No database found, creating it."
+msgstr "Keine Datenbank gefunden, sie wird erstellt."
+
+#: utils/db.py:55
+msgid "Database created."
+msgstr "Datenbank erstellt."
+
+#~ msgid "Add Feed"
+#~ msgstr "Feed hinzufügen"
+
+#~ msgid "Feed url:"
+#~ msgstr "Feed url"
