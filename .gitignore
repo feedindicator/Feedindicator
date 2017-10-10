@@ -1,2 +1,3 @@
-debian_packaging/feedindicator_*.deb
-debian_packaging/package
+__pycache__
+bin
+build
